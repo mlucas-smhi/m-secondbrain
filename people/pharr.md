@@ -60,6 +60,7 @@ Area of Involvement:
 - She is an PM and environmental engineer. M calls her a superhero.
 - She was at the most recent holiday part at work.
 - Likes Ferris Wheels
+- Likes making slide decks for travel
 
 ## Notes
 
