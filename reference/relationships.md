@@ -32,6 +32,7 @@ Pharr Andrews
 
 Relationship:
 Long-term partner.
+Girlfriend.
 
 Importance:
 Core relationship.
@@ -46,7 +47,7 @@ Topics frequently discussed:
 - Entertainment
 
 Reference:
-[[Pharr]]
+[[pharr]]
 
 ---
 
@@ -67,7 +68,7 @@ Context:
 - Born in San Diego
 
 Reference:
-[[Jeniffer-Lucas]]
+[[jeniffer-lucas]]
 
 Add only relationships that should influence conversational understanding.
 
@@ -92,7 +93,7 @@ Importance:
 High
 
 Reference:
-[[Curtis-Miller]]
+[[curtis-miller]]
 
 ---
 
@@ -112,7 +113,7 @@ Importance:
 High
 
 Reference:
-[[Jesus-LLorca]]
+[[jesus-llorca]]
 
 ---
 
@@ -132,7 +133,7 @@ Importance:
 High
 
 Reference:
-[[John-Gellert]]
+[[john-gellert]]
 
 --
 
@@ -151,7 +152,7 @@ Importance:
 High
 
 Reference:
-[[Andrew-Everett]]
+[[andrew-everett]]
 
 ---
 
@@ -170,7 +171,7 @@ Importance:
 Medium
 
 Reference:
-[[George-Self]]
+[[george-self]]
 
 ---
 
@@ -191,7 +192,7 @@ Importance:
 Medium
 
 Reference:
-[[Watts]]
+[[watts]]
 
 ---
 
@@ -210,7 +211,7 @@ Importance:
 Medium
 
 Reference:
-[[Biggie]]
+[[biggie]]
 
 ---
 
