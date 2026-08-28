@@ -68,7 +68,7 @@ Context:
 - Born in San Diego
 
 Reference:
-[[jeniffer-lucas]]
+[[jennifer-lucas]]
 
 Add only relationships that should influence conversational understanding.
 
