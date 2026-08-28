@@ -13,13 +13,13 @@ updated: 2026-08-27
 
 This note describes the current chapter of Michael Lucas' ongoing work and thinking.
 
-It provides Alfred with directional context at session startup.
+It provides Eleven with directional context at session startup.
 
 It should explain what is currently happening without duplicating the detailed contents of Project, Decision, Idea, or Task notes.
 
 ## Current Focus
 
-Michael is actively designing an alternative long-term memory and knowledge architecture for Alfred.
+Michael is actively designing an alternative long-term memory and knowledge architecture for Eleven.
 
 The effort began as an evaluation of Obsidian as a possible alternative to Zep.
 
@@ -32,7 +32,7 @@ The current direction is:
 - Git history provides change history and auditability.
 - GitHub MCP is the candidate connection between ElevenLabs and the repository.
 - Obsidian is an optional human interface.
-- Alfred is the conversational reasoning layer.
+- Eleven is the conversational reasoning layer.
 
 ## Current Architectural Model
 
@@ -46,7 +46,7 @@ Obsidian or another Markdown-compatible client
 
 Conversational interface:
 
-ElevenLabs and Alfred
+ElevenLabs and Eleven
 
 Agent access:
 
@@ -74,7 +74,7 @@ Read path:
 3. Establish high-level orientation.
 4. Detect entities during conversation.
 5. Retrieve deeper entity or historical notes when relevant.
-6. Use context naturally in Alfred's response.
+6. Use context naturally in Eleven's response.
 
 Write path:
 
@@ -145,7 +145,7 @@ The purpose of the tiers is to provide orientation first and retrieve detail onl
 
 The immediate priority is to complete and validate Bootstrap behavior.
 
-Bootstrap success means Alfred can:
+Bootstrap success means Eleven can:
 
 - Retrieve all required startup Reference notes
 - Understand Michael's current architecture and priorities
@@ -158,7 +158,7 @@ Bootstrap success means Alfred can:
 
 ## Current Guardrail
 
-Alfred should begin with read-only access to the repository.
+Eleven should begin with read-only access to the repository.
 
 Write access should be introduced only after:
 
