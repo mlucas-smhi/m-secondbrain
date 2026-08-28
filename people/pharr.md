@@ -35,7 +35,7 @@ Area of Involvement:
 ## Associated People
 
 - Biggie
-- M
+- Michael Lucas
 
 ## Topics Frequently Discussed
 
