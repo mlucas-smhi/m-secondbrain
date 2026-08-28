@@ -73,7 +73,7 @@ If no approved type fits, do not create a note. Record the rejected item in proc
 
 Folder:
 
-`Reference/`
+`reference/`
 
 Question answered:
 
@@ -104,11 +104,11 @@ Rules:
 
 Example:
 
-`Reference/Relationships.md` establishes that Curtis Miller is Michael's manager.
+`reference/relationships.md` establishes that Curtis Miller is Michael's manager.
 
 Detailed knowledge about Curtis belongs in:
 
-`People/Curtis-Miller.md`
+`people/curtis-miller.md`
 
 ## Person
 
@@ -160,13 +160,13 @@ Rules:
 - Do not store rumors
 - Distinguish current facts from historical facts
 - Mark approximate information as approximate
-- Do not add a person to `Reference/relationships.md` unless that person has sustained relevance
+- Do not add a person to `reference/relationships.md` unless that person has sustained relevance
 
 ## Pet
 
 Folder:
 
-`Pets/`
+`pets/`
 
 Question answered:
 
@@ -206,7 +206,7 @@ Rules:
 
 Folder:
 
-`Projects/`
+`projects/`
 
 Question answered:
 
@@ -250,7 +250,7 @@ Rules:
 
 Folder:
 
-`Decisions/`
+`decisions/`
 
 Question answered:
 
@@ -295,7 +295,7 @@ Rules:
 
 Folder:
 
-`Meetings/`
+`meetings/`
 
 Question answered:
 
@@ -332,7 +332,7 @@ Rules:
 
 Folder:
 
-`Incidents/`
+`incidents/`
 
 Question answered:
 
@@ -370,7 +370,7 @@ Rules:
 
 Folder:
 
-`Runbooks/`
+`runbooks/`
 
 Question answered:
 
@@ -414,7 +414,7 @@ Rules:
 
 Folder:
 
-`Learnings/`
+`learnings/`
 
 Question answered:
 
@@ -445,7 +445,7 @@ Rules:
 
 Folder:
 
-`Events/`
+`events/`
 
 Question answered:
 
@@ -488,7 +488,7 @@ Rules:
 
 Folder:
 
-`Ideas/`
+`ideas/`
 
 Question answered:
 
@@ -522,7 +522,7 @@ Rules:
 
 Folder:
 
-`Tasks/`
+`tasks/`
 
 Question answered:
 
