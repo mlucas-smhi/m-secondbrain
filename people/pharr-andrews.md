@@ -30,7 +30,6 @@ Area of Involvement:
 
 - Backyard Landscaping at Pharr's place
 - Art canvas stretching at M's place
-- 
 
 ## Associated People
 
