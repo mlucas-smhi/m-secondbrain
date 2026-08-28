@@ -4,18 +4,18 @@ relationships.md
 
 Entity Layer
      ↓
-people.md
-pets.md
-projects.md
+people
+pets
+projects
 
 Knowledge Layer
      ↓
-Decisions
-Learnings
-Runbooks
+decisions
+learnings
+runbooks
 
 Activity Layer
      ↓
-Tasks
-Meetings
-Events
+tasks
+meetings
+events
