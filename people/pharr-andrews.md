@@ -30,6 +30,7 @@ Area of Involvement:
 
 - Backyard Landscaping at Pharr's place
 - Art canvas stretching at M's place
+- Latin American tour for her November birthday (planning)
 
 ## Associated People
 
@@ -60,6 +61,7 @@ Area of Involvement:
 - She was at the most recent holiday part at work.
 - Likes Ferris Wheels
 - Likes making slide decks for travel
+- Planning a Latin American tour for her birthday in November
 
 ## Notes
 
