@@ -92,3 +92,32 @@ Dislikes:
 
 ## Active Themes
 
+
+# Future Locations
+
+## Active Evaluations
+
+### Colombia
+
+- [[Latin-America-Caribbean-Scouting-Tour-2026]]
+
+Potential candidates:
+- Medellín
+- Cartagena
+
+### Caribbean
+
+- [[Latin-America-Caribbean-Scouting-Tour-2026]]
+
+Potential candidates:
+- St. Maarten
+- Anguilla
+- St. Barts
+
+## Purpose
+
+Research locations suitable for:
+- Remote work
+- Extended stays
+- Seasonal residency
+- Retirement
