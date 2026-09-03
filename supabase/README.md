@@ -50,3 +50,19 @@ Run the database checks with a running local Supabase stack:
 ```sh
 supabase test db supabase/tests/turn_engine.sql
 ```
+
+## First automated turn
+
+`functions/run-task-turn` is the first HTTP runner. It accepts a task ID and a
+caller-owned idempotency key, then advances that task from `new` to `running`.
+It intentionally performs no AI reasoning, scheduling, or external action yet.
+
+The endpoint is internal: requests must use the service-role credential. Never
+put that credential in a browser, mobile app, or other untrusted client.
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-id-for-this-request"
+}
+```
