@@ -107,3 +107,35 @@ on its immutable completion event:
 
 Completion sets `completed_at` automatically and clears any remaining action or
 waiting fields. A completed task is terminal and cannot be reopened.
+
+## Deterministic decision router
+
+`functions/decide-task-turn` provides one orchestration endpoint for finishing
+a running turn. The caller must explicitly choose one of two outcomes; this
+function does not ask a model to make the decision.
+
+Pause for input:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-decision-request-id",
+  "outcome": "waiting_user",
+  "question": "Which date works for you?",
+  "resume_condition": "User supplies a date"
+}
+```
+
+Complete the task:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-decision-request-id",
+  "outcome": "completed",
+  "result": "The requested work is complete."
+}
+```
+
+The outcome-specific functions remain available as narrow building blocks, but
+new orchestration code should normally call `decide-task-turn`.
