@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(22);
+SELECT plan(30);
 
 SELECT lives_ok(
   $$
@@ -302,6 +302,118 @@ SELECT is(
   ),
   2,
   'pause and resume append one event each'
+);
+
+INSERT INTO public.tasks (id, task_type, goal)
+VALUES ('00000000-0000-4000-8000-000000000100', 'test', 'Process one waiting turn');
+
+SELECT lives_ok(
+  $$
+    SELECT public.process_task_turn(
+      '00000000-0000-4000-8000-000000000100',
+      'process-wait',
+      'new',
+      'waiting_user',
+      'test-runner',
+      'Which date works?',
+      'User supplies a date'
+    )
+  $$,
+  'one transaction can start and pause a turn'
+);
+
+SELECT is(
+  (
+    SELECT status
+      FROM public.tasks
+     WHERE id = '00000000-0000-4000-8000-000000000100'
+  ),
+  'waiting_user',
+  'the processed turn finishes in waiting_user'
+);
+
+SELECT is(
+  (
+    SELECT count(*)::integer
+      FROM public.task_events
+     WHERE task_id = '00000000-0000-4000-8000-000000000100'
+  ),
+  2,
+  'the processed waiting turn records start and decision events'
+);
+
+SELECT ok(
+  (
+    SELECT decision.parent_event_id = started.id
+      FROM public.task_events AS decision
+      JOIN public.task_events AS started
+        ON started.task_id = decision.task_id
+       AND started.event_type = 'turn.started'
+     WHERE decision.task_id = '00000000-0000-4000-8000-000000000100'
+       AND decision.event_type = 'turn.waiting_for_user'
+  ),
+  'the decision event links to its start event'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.process_task_turn(
+      '00000000-0000-4000-8000-000000000100',
+      'process-wait',
+      'new',
+      'waiting_user',
+      'test-runner',
+      'A conflicting replay?',
+      'Must not replace the original decision'
+    )
+  $$,
+  'replaying a processed turn is an idempotent success'
+);
+
+SELECT is(
+  (
+    SELECT count(*)::integer
+      FROM public.task_events
+     WHERE task_id = '00000000-0000-4000-8000-000000000100'
+  ),
+  2,
+  'replaying a processed turn creates no duplicate events'
+);
+
+INSERT INTO public.tasks (id, task_type, goal, status)
+VALUES (
+  '00000000-0000-4000-8000-000000000101',
+  'test',
+  'Process one completing turn',
+  'ready'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.process_task_turn(
+      '00000000-0000-4000-8000-000000000101',
+      'process-complete',
+      'ready',
+      'completed',
+      'test-runner',
+      NULL,
+      NULL,
+      'Atomic turn verified'
+    )
+  $$,
+  'one transaction can start and complete a resumed turn'
+);
+
+SELECT results_eq(
+  $$
+    SELECT task.status, task.completed_at IS NOT NULL, event.extracted_data->>'result'
+      FROM public.tasks AS task
+      JOIN public.task_events AS event ON event.task_id = task.id
+     WHERE task.id = '00000000-0000-4000-8000-000000000101'
+       AND event.event_type = 'turn.completed'
+  $$,
+  $$ VALUES ('completed'::text, true, 'Atomic turn verified'::text) $$,
+  'the processed completion stores its timestamp and result'
 );
 
 SELECT * FROM finish();

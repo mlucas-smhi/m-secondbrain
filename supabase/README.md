@@ -163,3 +163,38 @@ both the task and its first audit event in one request:
 
 `context` is optional and defaults to `{}`. `priority` is optional and ranges
 from `1` (highest) through `5` (lowest), defaulting to `3`.
+
+## Atomic turn processing
+
+`functions/process-task` is the preferred orchestration endpoint. It starts a
+`new` or `ready` task and applies its explicit decision in one database
+transaction. The paired events use `:started` and `:decision` suffixes on the
+caller-provided `call_id`, and the decision event links back to its start event.
+
+One request can pause for input:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-turn-request-id",
+  "expected_status": "new",
+  "outcome": "waiting_user",
+  "question": "Which date works for you?",
+  "resume_condition": "User supplies a date"
+}
+```
+
+Or complete the work:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-turn-request-id",
+  "expected_status": "ready",
+  "outcome": "completed",
+  "result": "The requested work is complete."
+}
+```
+
+If either transition fails, the entire turn rolls back. Retrying the same
+`call_id` returns the original outcome without adding events.
