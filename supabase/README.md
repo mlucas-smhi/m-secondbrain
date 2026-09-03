@@ -93,3 +93,17 @@ waiting fields, and moves the task to `ready`:
 
 Call `run-task-turn` again with `"expected_status": "ready"` to begin the next
 turn.
+
+`functions/complete-task` closes a running task and preserves a result summary
+on its immutable completion event:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-completion-request-id",
+  "result": "The requested work is complete."
+}
+```
+
+Completion sets `completed_at` automatically and clears any remaining action or
+waiting fields. A completed task is terminal and cannot be reopened.

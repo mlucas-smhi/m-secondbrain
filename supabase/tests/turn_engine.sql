@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(15);
+SELECT plan(16);
 
 INSERT INTO public.tasks (id, task_type, goal)
 VALUES ('00000000-0000-0000-0000-000000000001', 'test', 'Exercise the turn engine');
@@ -100,6 +100,17 @@ SELECT ok(
      WHERE id = '00000000-0000-0000-0000-000000000001'
   ),
   'completion records its timestamp'
+);
+
+SELECT is(
+  (
+    SELECT extracted_data->>'result'
+      FROM public.task_events
+     WHERE task_id = '00000000-0000-0000-0000-000000000001'
+       AND event_type = 'turn.completed'
+  ),
+  'done',
+  'completion preserves its result on the event'
 );
 
 SELECT throws_ok(
