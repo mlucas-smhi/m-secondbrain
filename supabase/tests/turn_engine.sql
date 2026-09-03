@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(30);
+SELECT plan(42);
 
 SELECT lives_ok(
   $$
@@ -414,6 +414,125 @@ SELECT results_eq(
   $$,
   $$ VALUES ('completed'::text, true, 'Atomic turn verified'::text) $$,
   'the processed completion stores its timestamp and result'
+);
+
+INSERT INTO public.tasks (
+  id, task_type, goal, status, waiting_for, pending_question, resume_condition
+)
+VALUES (
+  '00000000-0000-4000-8000-000000000102', 'test',
+  'Wake from a user response', 'waiting_user', 'user',
+  'Which night works?', 'User supplies a night'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000102', 'user_response',
+    'wake-user-1', '{"answer":"Friday"}'::jsonb, 'test-runner'
+  ) $$,
+  'a user response wakes a waiting_user task'
+);
+
+SELECT results_eq(
+  $$ SELECT status, waiting_for, pending_question, resume_condition, next_action
+       FROM public.tasks WHERE id = '00000000-0000-4000-8000-000000000102' $$,
+  $$ VALUES ('ready'::text, NULL::text, NULL::text, NULL::text, 'Continue task'::text) $$,
+  'waking makes the task ready and clears its pause state'
+);
+
+SELECT results_eq(
+  $$ SELECT event_type, outcome, extracted_data->>'answer'
+       FROM public.task_events WHERE task_id = '00000000-0000-4000-8000-000000000102' $$,
+  $$ VALUES ('user.responded'::text, 'resumed'::text, 'Friday'::text) $$,
+  'the wake event preserves its trigger data'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000102', 'user_response',
+    'wake-user-1', '{"answer":"Saturday"}'::jsonb
+  ) $$,
+  'replaying a wake is an idempotent success'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_events
+    WHERE task_id = '00000000-0000-4000-8000-000000000102'),
+  1,
+  'replaying a wake creates no duplicate event'
+);
+
+INSERT INTO public.tasks (id, task_type, goal, status, waiting_for)
+VALUES (
+  '00000000-0000-4000-8000-000000000103', 'test',
+  'Wake from an external event', 'waiting_external', 'calendar'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000103', 'external_event',
+    'wake-external-1', '{"event":"calendar.confirmed"}'::jsonb
+  ) $$,
+  'an external event wakes a waiting_external task'
+);
+
+SELECT is(
+  (SELECT event_type FROM public.task_events
+    WHERE task_id = '00000000-0000-4000-8000-000000000103'),
+  'external.received',
+  'an external wake records the correct event type'
+);
+
+INSERT INTO public.tasks (id, task_type, goal, status, next_action_at)
+VALUES (
+  '00000000-0000-4000-8000-000000000104', 'test',
+  'Wake when a timer expires', 'retry_scheduled', now() - interval '1 minute'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000104', 'scheduled_time', 'wake-timer-1'
+  ) $$,
+  'a due scheduled task can be woken'
+);
+
+SELECT results_eq(
+  $$ SELECT task.status, task.next_action_at, event.event_type
+       FROM public.tasks AS task
+       JOIN public.task_events AS event ON event.task_id = task.id
+      WHERE task.id = '00000000-0000-4000-8000-000000000104' $$,
+  $$ VALUES ('ready'::text, NULL::timestamptz, 'timer.elapsed'::text) $$,
+  'a timer wake clears its schedule and records an event'
+);
+
+INSERT INTO public.tasks (id, task_type, goal, status, next_action_at)
+VALUES (
+  '00000000-0000-4000-8000-000000000105', 'test',
+  'Reject an early timer', 'retry_scheduled', now() + interval '1 hour'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000105', 'scheduled_time', 'wake-timer-early'
+  ) $$,
+  '40001', 'scheduled task is not due',
+  'a scheduled task cannot wake early'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000105', 'external_event', 'wake-wrong-trigger'
+  ) $$,
+  '40001', 'trigger external_event cannot wake task in status retry_scheduled',
+  'a mismatched trigger cannot wake a task'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.wake_task(
+    '00000000-0000-4000-8000-000000000105', 'unsupported', 'wake-invalid-trigger'
+  ) $$,
+  '22023', 'trigger_type must be user_response, external_event, or scheduled_time',
+  'unsupported trigger types are rejected'
 );
 
 SELECT * FROM finish();

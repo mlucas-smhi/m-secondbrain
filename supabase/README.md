@@ -208,3 +208,29 @@ Or complete the work:
 
 If either transition fails, the entire turn rolls back. Retrying the same
 `call_id` returns the original outcome without adding events.
+
+## Universal wake endpoint
+
+`functions/wake-task` is the single resume door for n8n, callbacks, timers,
+and later inbound-call adapters:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "trigger_type": "user_response",
+  "call_id": "unique-trigger-request-id",
+  "data": {
+    "answer": "Friday"
+  }
+}
+```
+
+Supported trigger/status pairs are:
+
+- `user_response` -> `waiting_user`
+- `external_event` -> `waiting_external`
+- `scheduled_time` -> a due `retry_scheduled` task
+
+Successful wakes clear the waiting fields and move the task to `ready`. The
+trigger payload is preserved on the immutable event. Callers must reuse the
+same `call_id` when retrying a delivery; replays do not add another event.
