@@ -54,8 +54,9 @@ supabase test db supabase/tests/turn_engine.sql
 ## First automated turn
 
 `functions/run-task-turn` is the first HTTP runner. It accepts a task ID and a
-caller-owned idempotency key, then advances that task from `new` to `running`.
-It intentionally performs no AI reasoning, scheduling, or external action yet.
+caller-owned idempotency key, then advances that task from `new` or `ready` to
+`running`. It intentionally performs no AI reasoning, scheduling, or external
+action yet.
 
 The endpoint is internal: requests must use the service-role credential. Never
 put that credential in a browser, mobile app, or other untrusted client.
@@ -63,6 +64,32 @@ put that credential in a browser, mobile app, or other untrusted client.
 ```json
 {
   "task_id": "00000000-0000-0000-0000-000000000000",
-  "call_id": "unique-id-for-this-request"
+  "call_id": "unique-id-for-this-request",
+  "expected_status": "new"
 }
 ```
+
+`functions/wait-for-user` pauses a running task with a durable question:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-wait-request-id",
+  "question": "Which date works for you?",
+  "resume_condition": "User supplies a date"
+}
+```
+
+`functions/resume-task` records the answer on an immutable event, clears the
+waiting fields, and moves the task to `ready`:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "call_id": "unique-answer-request-id",
+  "answer": "November 10"
+}
+```
+
+Call `run-task-turn` again with `"expected_status": "ready"` to begin the next
+turn.
