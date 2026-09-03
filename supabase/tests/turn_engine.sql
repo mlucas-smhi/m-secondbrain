@@ -3,7 +3,85 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(16);
+SELECT plan(22);
+
+SELECT lives_ok(
+  $$
+    SELECT public.create_task(
+      'research',
+      'Find a useful answer',
+      'test-create-call',
+      'test-runner',
+      '{"topic":"turn engines"}'::jsonb,
+      2
+    )
+  $$,
+  'a valid request creates a task'
+);
+
+SELECT results_eq(
+  $$
+    SELECT task.task_type, task.goal, task.status, task.priority, task.context->>'topic'
+      FROM public.tasks AS task
+      JOIN public.task_events AS event ON event.task_id = task.id
+     WHERE event.event_type = 'task.created'
+       AND event.call_id = 'test-create-call'
+  $$,
+  $$
+    VALUES (
+      'research'::text,
+      'Find a useful answer'::text,
+      'new'::text,
+      2,
+      'turn engines'::text
+    )
+  $$,
+  'task creation stores the requested snapshot'
+);
+
+SELECT is(
+  (
+    SELECT event.outcome
+      FROM public.task_events AS event
+     WHERE event.event_type = 'task.created'
+       AND event.call_id = 'test-create-call'
+  ),
+  'created',
+  'task creation appends its provenance event'
+);
+
+SELECT is(
+  (
+    SELECT event.extracted_data->>'goal'
+      FROM public.task_events AS event
+     WHERE event.event_type = 'task.created'
+       AND event.call_id = 'test-create-call'
+  ),
+  'Find a useful answer',
+  'the creation event preserves the goal'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.create_task(
+      'different-type',
+      'A conflicting replay must not replace the task',
+      'test-create-call'
+    )
+  $$,
+  'a repeated creation call is an idempotent success'
+);
+
+SELECT is(
+  (
+    SELECT count(*)::integer
+      FROM public.task_events
+     WHERE event_type = 'task.created'
+       AND call_id = 'test-create-call'
+  ),
+  1,
+  'a repeated creation call creates no duplicate task or event'
+);
 
 INSERT INTO public.tasks (id, task_type, goal)
 VALUES ('00000000-0000-0000-0000-000000000001', 'test', 'Exercise the turn engine');

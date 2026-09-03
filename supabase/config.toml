@@ -406,6 +406,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/decide-task-turn/index.ts"
 
+[functions.create-task]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-task/index.ts"
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

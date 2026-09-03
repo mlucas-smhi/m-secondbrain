@@ -62,12 +62,13 @@ export function runtimeConfig(request: Request):
   return { supabaseUrl, serviceRoleKey };
 }
 
-export async function advanceTask(
+export async function callRpc(
   supabaseUrl: string,
   serviceRoleKey: string,
+  functionName: string,
   body: Record<string, unknown>,
 ): Promise<{ ok: boolean; result: unknown }> {
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/advance_task`, {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${functionName}`, {
     method: "POST",
     headers: {
       ...JSON_HEADERS,
@@ -81,6 +82,14 @@ export async function advanceTask(
     ok: response.ok,
     result: await response.json().catch(() => null),
   };
+}
+
+export function advanceTask(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; result: unknown }> {
+  return callRpc(supabaseUrl, serviceRoleKey, "advance_task", body);
 }
 
 export function validCallId(value: unknown): value is string {

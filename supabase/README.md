@@ -11,6 +11,10 @@ All task progress should go through `public.advance_task`. The function:
 - validates the lifecycle transition and allowed patch fields;
 - updates the task and appends its event in the same transaction.
 
+Task creation goes through `public.create_task`, which atomically creates the
+initial `new` snapshot and its `task.created` provenance event. A creation
+`call_id` is globally unique so retries cannot create duplicate tasks.
+
 Only `service_role` can execute the function. Never expose that credential to a
 client. A trusted worker or server function should call the RPC.
 
@@ -139,3 +143,23 @@ Complete the task:
 
 The outcome-specific functions remain available as narrow building blocks, but
 new orchestration code should normally call `decide-task-turn`.
+
+## Task creation
+
+`functions/create-task` replaces manual inserts into `public.tasks`. It creates
+both the task and its first audit event in one request:
+
+```json
+{
+  "task_type": "research",
+  "goal": "Compare three possible destinations",
+  "call_id": "unique-creation-request-id",
+  "context": {
+    "traveler": "Michael"
+  },
+  "priority": 3
+}
+```
+
+`context` is optional and defaults to `{}`. `priority` is optional and ranges
+from `1` (highest) through `5` (lowest), defaulting to `3`.
