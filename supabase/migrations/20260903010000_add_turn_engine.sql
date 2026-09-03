@@ -126,20 +126,22 @@ BEGIN
 
   v_new_status := COALESCE(p_patch->>'status', v_task.status);
 
-  IF v_new_status <> v_task.status AND NOT CASE v_task.status
-    WHEN 'new' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
-    WHEN 'ready' THEN v_new_status IN ('running', 'cancelled', 'failed')
-    WHEN 'running' THEN v_new_status IN (
-      'ready', 'waiting_user', 'waiting_external', 'retry_scheduled',
-      'completed', 'failed', 'cancelled'
-    )
-    WHEN 'waiting_user' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
-    WHEN 'waiting_external' THEN v_new_status IN (
-      'ready', 'running', 'retry_scheduled', 'cancelled', 'failed'
-    )
-    WHEN 'retry_scheduled' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
-    ELSE false
-  END THEN
+  IF v_new_status <> v_task.status AND NOT (
+    CASE v_task.status
+      WHEN 'new' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
+      WHEN 'ready' THEN v_new_status IN ('running', 'cancelled', 'failed')
+      WHEN 'running' THEN v_new_status IN (
+        'ready', 'waiting_user', 'waiting_external', 'retry_scheduled',
+        'completed', 'failed', 'cancelled'
+      )
+      WHEN 'waiting_user' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
+      WHEN 'waiting_external' THEN v_new_status IN (
+        'ready', 'running', 'retry_scheduled', 'cancelled', 'failed'
+      )
+      WHEN 'retry_scheduled' THEN v_new_status IN ('ready', 'running', 'cancelled', 'failed')
+      ELSE false
+    END
+  ) THEN
     RAISE EXCEPTION USING
       ERRCODE = '22023',
       MESSAGE = format('invalid task transition: %s -> %s', v_task.status, v_new_status);
