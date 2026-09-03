@@ -25,6 +25,30 @@ function postgresStatus(error: unknown): number {
   }
 }
 
+function hasServiceRole(request: Request, serviceRoleKey: string): boolean {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) return false;
+
+  const token = authorization.slice("Bearer ".length).trim();
+  if (token === serviceRoleKey) return true;
+
+  // verify_jwt is enabled at the Edge Function gateway, so a JWT reaching this
+  // handler has already had its signature and expiry checked by Supabase.
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+
+  try {
+    const base64 = parts[1].replaceAll("-", "+").replaceAll("_", "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload: unknown = JSON.parse(atob(padded));
+
+    return typeof payload === "object" && payload !== null &&
+      "role" in payload && payload.role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") {
     return json(405, { error: "method_not_allowed" });
@@ -38,10 +62,9 @@ Deno.serve(async (request) => {
     return json(500, { error: "server_misconfigured" });
   }
 
-  // This is an internal runner endpoint. The gateway verifies the credential;
-  // this comparison additionally prevents ordinary authenticated users from
-  // invoking a service-role database transition.
-  if (request.headers.get("authorization") !== `Bearer ${serviceRoleKey}`) {
+  // This is an internal runner endpoint. The gateway verifies JWT signatures;
+  // the handler additionally requires its trusted service_role claim.
+  if (!hasServiceRole(request, serviceRoleKey)) {
     return json(403, { error: "service_role_required" });
   }
 
