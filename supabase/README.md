@@ -62,8 +62,18 @@ caller-owned idempotency key, then advances that task from `new` or `ready` to
 `running`. It intentionally performs no AI reasoning, scheduling, or external
 action yet.
 
-The endpoint is internal: requests must use the service-role credential. Never
-put that credential in a browser, mobile app, or other untrusted client.
+The endpoints authenticate callers with a dedicated `X-Turn-Engine-Key`
+header. The Supabase service-role credential remains inside the Edge Function
+runtime and must never be given to an external caller.
+
+```text
+X-Turn-Engine-Key: YOUR_TURN_ENGINE_API_KEY
+Content-Type: application/json
+```
+
+JWT verification is disabled at the Supabase gateway because these are
+machine-to-machine endpoints. Every handler calls the shared key guard before
+reading its request body or touching the database.
 
 ```json
 {

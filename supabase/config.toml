@@ -383,37 +383,37 @@ deno_version = 2
 
 [functions.run-task-turn]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/run-task-turn/index.ts"
 
 [functions.wait-for-user]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/wait-for-user/index.ts"
 
 [functions.resume-task]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/resume-task/index.ts"
 
 [functions.complete-task]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/complete-task/index.ts"
 
 [functions.decide-task-turn]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/decide-task-turn/index.ts"
 
 [functions.create-task]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/create-task/index.ts"
 
 [functions.process-task]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/process-task/index.ts"
 
 # [edge_runtime.secrets]

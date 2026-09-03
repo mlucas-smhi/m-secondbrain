@@ -20,28 +20,15 @@ export function postgresStatus(error: unknown): number {
   }
 }
 
-export function hasServiceRole(request: Request, serviceRoleKey: string): boolean {
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) return false;
+function timingSafeEqual(left: string, right: string): boolean {
+  const length = Math.max(left.length, right.length);
+  let difference = left.length ^ right.length;
 
-  const token = authorization.slice("Bearer ".length).trim();
-  if (token === serviceRoleKey) return true;
-
-  // verify_jwt is enabled at the Edge Function gateway, so a JWT reaching the
-  // handler has already had its signature and expiry checked by Supabase.
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-
-  try {
-    const base64 = parts[1].replaceAll("-", "+").replaceAll("_", "/");
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const payload: unknown = JSON.parse(atob(padded));
-
-    return typeof payload === "object" && payload !== null &&
-      "role" in payload && payload.role === "service_role";
-  } catch {
-    return false;
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
   }
+
+  return difference === 0;
 }
 
 export function runtimeConfig(request: Request):
@@ -49,14 +36,16 @@ export function runtimeConfig(request: Request):
   | Response {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const turnEngineApiKey = Deno.env.get("TURN_ENGINE_API_KEY");
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey || !turnEngineApiKey) {
     console.error("Missing required Supabase environment variables");
     return json(500, { error: "server_misconfigured" });
   }
 
-  if (!hasServiceRole(request, serviceRoleKey)) {
-    return json(403, { error: "service_role_required" });
+  const providedKey = request.headers.get("x-turn-engine-key") ?? "";
+  if (!timingSafeEqual(providedKey, turnEngineApiKey)) {
+    return json(403, { error: "turn_engine_key_required" });
   }
 
   return { supabaseUrl, serviceRoleKey };
