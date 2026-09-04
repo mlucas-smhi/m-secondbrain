@@ -82,6 +82,8 @@ The hosted database currently differs from migration-declared permissions:
 
 - `advance_task`: API execution disabled, including `service_role`.
 - `process_task_turn`: API execution disabled, including `service_role`.
+- `wake_task`: API execution disabled by the follow-up safety migration because
+  it delegates to `advance_task`.
 - Stored task snapshots and events remain intact.
 
 See `docs/turn-engine-runbook.md` for the exact containment and restoration SQL.

@@ -2,11 +2,10 @@
 
 ## Current safety state
 
-As of 2026-09-04, hosted execution of `advance_task` and
-`process_task_turn` is intentionally disabled. This is a live operational
-control applied directly to the hosted database; it is not represented by the
-existing migrations. A future migration should make the final permission state
-reproducible after the incident is resolved.
+As of 2026-09-04, hosted execution of `advance_task`, `process_task_turn`, and
+`wake_task` is intentionally disabled. Migration
+`20260904183000_make_task_conflicts_non_retryable.sql` makes that safety state
+reproducible while the incident is resolved.
 
 ## Normal deployment inputs
 
@@ -45,6 +44,7 @@ cannot identify the original internet client. Use this order:
 2. Search the incident window for:
    - `/rest/v1/rpc/advance_task`
    - `/rest/v1/rpc/process_task_turn`
+   - `/rest/v1/rpc/wake_task`
 3. Inspect source IP, user agent, request ID, JWT role/key type, and referrer.
 4. Compare the fingerprint with n8n executions, Edge Function logs, browser
    testers, and local scripts.
@@ -63,6 +63,10 @@ revoke execute on function public.advance_task(
 
 revoke execute on function public.process_task_turn(
   uuid, text, text, text, text, text, text, text
+) from public, anon, authenticated, service_role;
+
+revoke execute on function public.wake_task(
+  uuid, text, text, jsonb, text
 ) from public, anon, authenticated, service_role;
 ```
 
@@ -103,6 +107,10 @@ grant execute on function public.advance_task(
 
 grant execute on function public.process_task_turn(
   uuid, text, text, text, text, text, text, text
+) to service_role;
+
+grant execute on function public.wake_task(
+  uuid, text, text, jsonb, text
 ) to service_role;
 ```
 

@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(42);
+SELECT plan(43);
 
 SELECT lives_ok(
   $$
@@ -143,6 +143,22 @@ SELECT is(
   ),
   'running',
   'an idempotent replay does not apply a different patch'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT public.advance_task(
+      '00000000-0000-0000-0000-000000000001',
+      'turn.started',
+      'test-runner',
+      'stale-call',
+      'new',
+      '{}'::jsonb
+    )
+  $$,
+  'PT409',
+  'stale task state: expected new, found running',
+  'a stale expected status raises a non-retryable conflict'
 );
 
 SELECT lives_ok(
@@ -515,7 +531,7 @@ SELECT throws_ok(
   $$ SELECT public.wake_task(
     '00000000-0000-4000-8000-000000000105', 'scheduled_time', 'wake-timer-early'
   ) $$,
-  '40001', 'scheduled task is not due',
+  'PT409', 'scheduled task is not due',
   'a scheduled task cannot wake early'
 );
 
@@ -523,7 +539,7 @@ SELECT throws_ok(
   $$ SELECT public.wake_task(
     '00000000-0000-4000-8000-000000000105', 'external_event', 'wake-wrong-trigger'
   ) $$,
-  '40001', 'trigger external_event cannot wake task in status retry_scheduled',
+  'PT409', 'trigger external_event cannot wake task in status retry_scheduled',
   'a mismatched trigger cannot wake a task'
 );
 

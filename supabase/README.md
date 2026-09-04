@@ -1,7 +1,8 @@
 # Turn engine
 
-> **Operational notice (2026-09-04):** Hosted execution of `advance_task` and
-> `process_task_turn` is temporarily revoked following a runaway RPC incident.
+> **Operational notice (2026-09-04):** Hosted execution of `advance_task`,
+> `process_task_turn`, and `wake_task` is temporarily revoked following a
+> runaway RPC incident.
 > Do not use hosted turn-processing endpoints until the restoration checklist
 > in [`../docs/turn-engine-runbook.md`](../docs/turn-engine-runbook.md) is
 > complete. Architecture and incident details are in

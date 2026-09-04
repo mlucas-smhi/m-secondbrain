@@ -14,16 +14,18 @@ claim that every planned automation is production-ready.
 ## Current hosted status
 
 Hosted turn processing is intentionally paused after the 2026-09-04 runaway
-RPC incident. Execution privileges are temporarily revoked from these two
+RPC incident. Execution privileges are temporarily revoked from these
 database functions:
 
 - `public.advance_task`
 - `public.process_task_turn`
+- `public.wake_task`
 
 The project restart completed and the error flood stopped. Task and event data
-were not deleted. `create_task` and `wake_task` were not part of the emergency
-revocation. Do not restore the two contained RPCs until the caller has been
-identified and retry guards have been added.
+were not deleted. `wake_task` was not part of the original emergency
+revocation, but the follow-up safety migration closes it because it delegates
+to `advance_task`. `create_task` remains available. Do not restore the contained
+RPCs until the runbook exit criteria are met.
 
 ## Components
 

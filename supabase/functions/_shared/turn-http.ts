@@ -11,7 +11,7 @@ export function postgresStatus(error: unknown): number {
   switch ((error as { code?: unknown }).code) {
     case "P0002":
       return 404;
-    case "40001":
+    case "PT409":
       return 409;
     case "22023":
       return 422;
