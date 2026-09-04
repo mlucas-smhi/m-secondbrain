@@ -1,5 +1,13 @@
 # Turn engine
 
+> **Operational notice (2026-09-04):** Hosted execution of `advance_task` and
+> `process_task_turn` is temporarily revoked following a runaway RPC incident.
+> Do not use hosted turn-processing endpoints until the restoration checklist
+> in [`../docs/turn-engine-runbook.md`](../docs/turn-engine-runbook.md) is
+> complete. Architecture and incident details are in
+> [`../docs/turn-engine.md`](../docs/turn-engine.md) and
+> [`../docs/incidents/2026-09-04-runaway-turn-rpc.md`](../docs/incidents/2026-09-04-runaway-turn-rpc.md).
+
 The turn engine stores the current task snapshot in `public.tasks` and its
 append-only history in `public.task_events`.
 

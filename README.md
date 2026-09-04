@@ -1,5 +1,13 @@
 # m-secondbrain
 
+> **Hosted turn engine status (2026-09-04):** Containment is active after a
+> runaway RPC incident. API execution of `advance_task` and
+> `process_task_turn` is temporarily revoked, so hosted turn processing is
+> paused while the caller is identified. Stored tasks and events are intact.
+> See [Turn engine architecture](docs/turn-engine.md), the
+> [operations runbook](docs/turn-engine-runbook.md), and the
+> [incident record](docs/incidents/2026-09-04-runaway-turn-rpc.md).
+
 ## Overview
 
 `m-secondbrain` is a GitHub-backed knowledge repository for Alfred, Michael Lucas's ElevenLabs voice agent.
@@ -16,6 +24,11 @@ The current model is:
 - Obsidian is an optional human interface for viewing and editing the repository.
 
 The repository is intended to provide Alfred with durable context, deterministic entity retrieval, governed memory creation, and a future foundation for action tools such as restaurant booking, travel, home automation, and shared household projects.
+
+The repository also contains a Supabase-backed deterministic turn engine. It
+stores task state, records an immutable event history, exposes authenticated
+Edge Functions, and uses n8n as the durable pause/wake integration layer for
+callbacks and external events. Its implementation is under `supabase/`.
 
 ## Current Status
 
