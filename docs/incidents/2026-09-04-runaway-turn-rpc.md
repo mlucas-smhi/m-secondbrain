@@ -2,8 +2,9 @@
 
 ## Status
 
-Contained. Root caller not yet identified. Hosted turn processing remains
-partially disabled pending investigation and hardening.
+Contained. The initiating client and immediate database caller are identified.
+Hosted turn processing remains partially disabled pending a non-retryable
+conflict-code fix and hardening.
 
 ## Summary
 
@@ -14,8 +15,15 @@ task transitions and generated SQLSTATE `40001` errors:
 - `stale task state: expected running, found new`
 - `stale task state: expected new, found completed`
 
-The error count reached approximately 359,000 in the one-hour log window. The
-volume exhausted database/PostgREST resources and affected project performance.
+The first one-hour view showed approximately 359,000 errors; the 24-hour view
+later showed approximately 6.6 million Postgres log entries. The volume
+exhausted database/PostgREST resources and affected project performance.
+
+API Gateway evidence shows only three failing requests to
+`/rest/v1/rpc/advance_task`, at 11:26:05, 11:28:19, and 11:29:16. Each returned
+HTTP 504 and identified its client as
+`Deno/2.1.4 (variant; SupabaseEdgeRuntime/1.74.3)`. This rules out millions of
+independent HTTP calls and points to database-layer retry behavior.
 
 ## Impact
 
@@ -24,6 +32,19 @@ volume exhausted database/PostgREST resources and affected project performance.
 - Normal hosted turn processing became unreliable.
 - Supabase displayed a resource-exhaustion warning.
 - No evidence indicated task or event data loss.
+
+## Caller attribution
+
+- An n8n Cloud client initiated the test through
+  `/functions/v1/create-task` at 11:24:50. Supabase identified the client as
+  `node`, from an AWS address in Ashburn, Virginia.
+- The immediate callers of the three failing `advance_task` requests were
+  Supabase Edge Runtime instances, as shown by their Deno/SupabaseEdgeRuntime
+  user agent.
+- The API Gateway records had no authenticated Supabase user attached.
+
+The available logs identify the systems in the call chain, but do not expose
+which Edge Function produced each timed-out outbound RPC request.
 
 ## What was ruled out
 
@@ -38,8 +59,8 @@ volume exhausted database/PostgREST resources and affected project performance.
 - Deleting an accidentally created extra Supabase secret API key did not stop
   the traffic, so it was not the credential used by the caller.
 
-These observations narrow the investigation but do not conclusively identify
-the source.
+These observations rule out a high-frequency n8n HTTP retry loop as the direct
+source of the millions of database errors.
 
 ## Containment timeline
 
@@ -65,22 +86,25 @@ The hosted database currently differs from migration-declared permissions:
 
 See `docs/turn-engine-runbook.md` for the exact containment and restoration SQL.
 
-## Likely failure pattern
+## Root cause
 
-A caller repeatedly treated deterministic state conflicts as retryable. Because
-requests used incompatible expected states, successful or previously completed
-transitions could not satisfy later attempts. SQLSTATE `40001` mapped to HTTP
-409 in the Edge Function helper, but some caller or direct RPC path continued
-at extremely high frequency without bounded retries or backoff.
+`advance_task` raises SQLSTATE `40001` for deterministic stale task state.
+PostgreSQL reserves `40001` for `serialization_failure`, a transient condition
+that database clients and transaction infrastructure may retry automatically.
+The stale states were permanent for each request, so retries could never
+succeed. Three timed-out RPC requests therefore amplified into millions of
+database attempts.
 
-This is an inference from the observed errors and request rate. The original
-caller remains unconfirmed.
+This conclusion is supported by the three-request API Gateway count, the Edge
+Runtime user agent, the HTTP 504 outcomes, and the much larger Postgres error
+count. The exact component performing the automatic retry remains to be proven,
+but the incorrect retryable SQLSTATE is the amplification trigger.
 
 ## Follow-up work
 
-- Correlate API Gateway request metadata with the incident window.
-- Identify and disable the originating client or credential.
-- Add a safe diagnostic gate if historical logs are insufficient.
+- Replace SQLSTATE `40001` for stale task state with a non-retryable application
+  error and preserve its HTTP 409 mapping at the Edge Function boundary.
+- Identify the exact Edge Function behind each of the three timed-out requests.
 - Add bounded retries, backoff, non-retryable conflict handling, and workflow
   concurrency limits.
 - Add request-rate and database-resource alerting.
