@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(47);
+SELECT plan(51);
 
 SELECT lives_ok(
   $$
@@ -592,6 +592,82 @@ SELECT throws_ok(
   ) $$,
   '22023', 'trigger_type must be user_response, external_event, or scheduled_time',
   'unsupported trigger types are rejected'
+);
+
+SELECT ok(
+  has_function_privilege(
+    'service_role',
+    'public.advance_task(uuid,text,text,text,text,jsonb,text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'anon',
+    'public.advance_task(uuid,text,text,text,text,jsonb,text,jsonb,uuid)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'authenticated',
+    'public.advance_task(uuid,text,text,text,text,jsonb,text,jsonb,uuid)',
+    'EXECUTE'
+  ),
+  'only service_role can execute advance_task through the API'
+);
+
+SELECT ok(
+  has_function_privilege(
+    'service_role',
+    'public.process_task_turn(uuid,text,text,text,text,text,text,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'anon',
+    'public.process_task_turn(uuid,text,text,text,text,text,text,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'authenticated',
+    'public.process_task_turn(uuid,text,text,text,text,text,text,text)',
+    'EXECUTE'
+  ),
+  'only service_role can execute process_task_turn through the API'
+);
+
+SELECT ok(
+  has_function_privilege(
+    'service_role',
+    'public.wake_task(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'anon',
+    'public.wake_task(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'authenticated',
+    'public.wake_task(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  ),
+  'only service_role can execute wake_task through the API'
+);
+
+SELECT ok(
+  has_function_privilege(
+    'service_role',
+    'public.wake_task_delivery(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'anon',
+    'public.wake_task_delivery(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  )
+  AND NOT has_function_privilege(
+    'authenticated',
+    'public.wake_task_delivery(uuid,text,text,jsonb,text)',
+    'EXECUTE'
+  ),
+  'only service_role can execute the delivery-aware wake wrapper'
 );
 
 SELECT * FROM finish();

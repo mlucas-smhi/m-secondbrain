@@ -2,9 +2,10 @@
 
 ## Status
 
-Contained. The initiating client and immediate database caller are identified.
-Hosted turn processing remains partially disabled pending a non-retryable
-conflict-code fix and hardening.
+Resolved and restored. The initiating client and immediate database caller are
+identified. Hosted turn processing was restored to `service_role` only on
+2026-09-05 after the non-retryable conflict fix, delivery replay gate, local
+tests, and a monitored hosted canary passed.
 
 ## Summary
 
@@ -76,15 +77,12 @@ Times are America/Chicago on 2026-09-04.
 - After restart — no newer stale-state results appeared. The historical log
   backlog subsequently drained to no results.
 
-## Active containment
+## Restored permission state
 
-The hosted database currently differs from migration-declared permissions:
-
-- `advance_task`: API execution disabled, including `service_role`.
-- `process_task_turn`: API execution disabled, including `service_role`.
-- `wake_task`: API execution disabled by the follow-up safety migration because
-  it delegates to `advance_task`.
-- Stored task snapshots and events remain intact.
+Migration `20260905113000_restore_turn_engine_service_role.sql` restores
+`advance_task`, `process_task_turn`, `wake_task`, and `wake_task_delivery` only
+to `service_role`. `public`, `anon`, and `authenticated` remain denied. Stored
+task snapshots and events remained intact throughout containment.
 
 See `docs/turn-engine-runbook.md` for the exact containment and restoration SQL.
 
@@ -112,6 +110,8 @@ but the incorrect retryable SQLSTATE is the amplification trigger.
 - [x] Configure the n8n webhook to acknowledge immediately, disable node
   retries, gate the ElevenLabs branch to new deliveries, and cap executions at
   one minute.
+- [x] Restore transition execution only to `service_role` after 51 local
+  assertions and a monitored hosted new-delivery/replay canary passed.
 - Identify the exact Edge Function behind each of the three timed-out requests.
 - Add bounded retries, backoff, non-retryable conflict handling, and workflow
   concurrency limits.

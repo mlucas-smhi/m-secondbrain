@@ -2,10 +2,10 @@
 
 ## Current safety state
 
-As of 2026-09-04, hosted execution of `advance_task`, `process_task_turn`, and
-`wake_task` is intentionally disabled. Migration
-`20260904183000_make_task_conflicts_non_retryable.sql` makes that safety state
-reproducible while the incident is resolved.
+As of 2026-09-05, hosted execution is restored only to `service_role` by
+`20260905113000_restore_turn_engine_service_role.sql`. `public`, `anon`, and
+`authenticated` cannot execute the transition RPCs. The preceding containment
+migration remains in history and documents the reproducible circuit breaker.
 
 ## Normal deployment inputs
 
@@ -122,6 +122,13 @@ Do not grant any transition function to `public`, `anon`, or `authenticated`.
 
 After restoration, send one canary request and verify exactly the expected task
 events before allowing automated traffic.
+
+Restoration completed on 2026-09-05. The hosted canary task
+`a7cb2494-de5f-40d1-bc1a-0fb418f65135` produced one new wake with
+`replayed: false`; the same `call_id` then returned `replayed: true`. n8n routed
+the first response to its true branch and the replay to its false branch.
+ElevenLabs was not invoked, and temporary pinned test data was removed before
+the corrected workflow version was published.
 
 ## Required hardening before restoration
 

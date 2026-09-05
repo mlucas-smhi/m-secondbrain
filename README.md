@@ -1,9 +1,9 @@
 # m-secondbrain
 
-> **Hosted turn engine status (2026-09-04):** Containment is active after a
-> runaway RPC incident. API execution of `advance_task`, `process_task_turn`,
-> and `wake_task` is temporarily revoked, so hosted turn processing is
-> paused while the conflict handling is hardened. Stored tasks and events are intact.
+> **Hosted turn engine status (2026-09-05):** Service is restored after the
+> runaway RPC incident. Deterministic conflicts are non-retryable, wake
+> deliveries expose an atomic replay flag, transition RPCs are executable only
+> by `service_role`, and the replay gate passed a monitored hosted canary.
 > See [Turn engine architecture](docs/turn-engine.md), the
 > [operations runbook](docs/turn-engine-runbook.md), and the
 > [incident record](docs/incidents/2026-09-04-runaway-turn-rpc.md).

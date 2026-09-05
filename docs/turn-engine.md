@@ -13,21 +13,21 @@ claim that every planned automation is production-ready.
 
 ## Current hosted status
 
-Hosted turn processing is intentionally paused after the 2026-09-04 runaway
-RPC incident. Execution privileges are temporarily revoked from these
-database functions:
+Hosted turn processing was restored on 2026-09-05 after the 2026-09-04 runaway
+RPC incident. These database functions are executable through the API only by
+`service_role`:
 
 - `public.advance_task`
 - `public.process_task_turn`
 - `public.wake_task`
 - `public.wake_task_delivery`
 
-The project restart completed and the error flood stopped. Task and event data
-were not deleted. `wake_task` was not part of the original emergency
-revocation, but the follow-up safety migration closes it because it delegates
-to `advance_task`. The delivery-aware wrapper is also closed. `create_task`
-remains available. Do not restore the contained RPCs until the runbook exit
-criteria are met.
+`public`, `anon`, and `authenticated` remain denied. Deterministic task-state
+conflicts use non-retryable SQLSTATE `PT409`, and the Edge Function maps them
+to HTTP 409. A delivery-aware wrapper atomically identifies idempotent wake
+replays. The restoration passed 51 local assertions and one monitored hosted
+canary covering a new wake and a same-call-ID replay. No ElevenLabs call was
+placed during the canary.
 
 ## Components
 
@@ -70,6 +70,7 @@ The migration history is in `supabase/migrations/`:
 - `20260903230000_add_wake_task.sql`
 - `20260904183000_make_task_conflicts_non_retryable.sql`
 - `20260905100000_add_wake_task_delivery.sql`
+- `20260905113000_restore_turn_engine_service_role.sql`
 
 ### Edge Functions
 
