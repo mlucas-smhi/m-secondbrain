@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(51);
+SELECT plan(70);
 
 SELECT lives_ok(
   $$
@@ -668,6 +668,199 @@ SELECT ok(
     'EXECUTE'
   ),
   'only service_role can execute the delivery-aware wake wrapper'
+);
+
+INSERT INTO public.tasks (id, task_type, goal)
+VALUES (
+  '00000000-0000-4000-8000-000000000107',
+  'test',
+  'Exercise the durable dispatch outbox'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.enqueue_task_dispatch(
+    '00000000-0000-4000-8000-000000000107',
+    'elevenlabs.outbound_call',
+    'dispatch-call-1',
+    '{"to_number":"+15555550100"}'::jsonb
+  ) $$,
+  'a valid side effect can be enqueued'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, max_attempts, payload->>'to_number'
+       FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107' $$,
+  $$ VALUES ('pending'::text, 0, 3, '+15555550100'::text) $$,
+  'a new dispatch starts pending with a bounded attempt count'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.enqueue_task_dispatch(
+    '00000000-0000-4000-8000-000000000107',
+    'different.type',
+    'dispatch-call-1',
+    '{"changed":true}'::jsonb
+  ) $$,
+  'replaying a dispatch dedupe key is an idempotent success'
+);
+
+SELECT is(
+  (SELECT count(*)::integer
+     FROM public.task_dispatches
+    WHERE task_id = '00000000-0000-4000-8000-000000000107'),
+  1,
+  'an enqueue replay creates no duplicate dispatch'
+);
+
+SELECT is(
+  (SELECT dispatch_type
+     FROM public.task_dispatches
+    WHERE task_id = '00000000-0000-4000-8000-000000000107'),
+  'elevenlabs.outbound_call',
+  'an enqueue replay does not replace the original intent'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('worker-a')),
+  1,
+  'one worker claims the pending dispatch'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, locked_by, locked_at IS NOT NULL
+       FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107' $$,
+  $$ VALUES ('processing'::text, 1, 'worker-a'::text, true) $$,
+  'claiming records ownership and the first attempt'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('worker-b')),
+  0,
+  'a claimed dispatch cannot be claimed by another worker'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.complete_task_dispatch(
+    (SELECT id FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107'),
+    'worker-b'
+  ) $$,
+  'PT409', 'dispatch is not owned by worker',
+  'a different worker cannot complete the dispatch'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.retry_task_dispatch(
+    (SELECT id FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107'),
+    'worker-a', 'provider unavailable', 1
+  ) $$,
+  'the owning worker can schedule a bounded retry'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, locked_by, last_error, available_at > now()
+       FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107' $$,
+  $$ VALUES ('pending'::text, 1, NULL::text, 'provider unavailable'::text, true) $$,
+  'a retry releases the lock and records its delay and error'
+);
+
+UPDATE public.task_dispatches
+   SET available_at = now() - interval '1 second'
+ WHERE task_id = '00000000-0000-4000-8000-000000000107';
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('worker-a')),
+  1,
+  'the same worker can claim the dispatch after its delay'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.complete_task_dispatch(
+    (SELECT id FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107'),
+    'worker-a', '{"provider_id":"call-123"}'::jsonb
+  ) $$,
+  'the owning worker can complete the dispatch'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, locked_by, completed_at IS NOT NULL,
+            result->>'provider_id'
+       FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000107' $$,
+  $$ VALUES ('completed'::text, 2, NULL::text, true, 'call-123'::text) $$,
+  'completion records the provider result and clears ownership'
+);
+
+INSERT INTO public.tasks (id, task_type, goal)
+VALUES
+  ('00000000-0000-4000-8000-000000000108', 'test', 'Recover an abandoned dispatch'),
+  ('00000000-0000-4000-8000-000000000109', 'test', 'Fail an exhausted abandoned dispatch');
+
+SELECT public.enqueue_task_dispatch(
+  '00000000-0000-4000-8000-000000000108',
+  'elevenlabs.outbound_call',
+  'recover-call-1',
+  '{}'::jsonb
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('crashed-worker')),
+  1,
+  'a worker can claim a dispatch that will be abandoned'
+);
+
+UPDATE public.task_dispatches
+   SET locked_at = now() - interval '6 minutes'
+ WHERE task_id = '00000000-0000-4000-8000-000000000108';
+
+SELECT results_eq(
+  $$ SELECT task_id, status, attempt_count, locked_by
+       FROM public.claim_task_dispatch('replacement-worker') $$,
+  $$ VALUES (
+       '00000000-0000-4000-8000-000000000108'::uuid,
+       'processing'::text,
+       2,
+       'replacement-worker'::text
+     ) $$,
+  'claiming recovers an expired worker lease and transfers ownership'
+);
+
+SELECT public.enqueue_task_dispatch(
+  '00000000-0000-4000-8000-000000000109',
+  'elevenlabs.outbound_call',
+  'exhaust-call-1',
+  '{}'::jsonb,
+  now(),
+  1
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('last-worker')),
+  1,
+  'a one-attempt dispatch can be claimed once'
+);
+
+UPDATE public.task_dispatches
+   SET locked_at = now() - interval '6 minutes'
+ WHERE task_id = '00000000-0000-4000-8000-000000000109';
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_dispatch('too-late-worker')),
+  0,
+  'an expired dispatch with no attempts remaining is not reclaimed'
+);
+
+SELECT results_eq(
+  $$ SELECT status, locked_by, last_error
+       FROM public.task_dispatches
+      WHERE task_id = '00000000-0000-4000-8000-000000000109' $$,
+  $$ VALUES ('failed'::text, NULL::text, 'worker lease expired'::text) $$,
+  'an exhausted expired dispatch becomes a terminal failure'
 );
 
 SELECT * FROM finish();

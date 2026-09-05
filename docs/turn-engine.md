@@ -8,7 +8,7 @@ state and transition integrity. n8n connects asynchronous systems and wakes a
 task when its dependency is satisfied. ElevenLabs supplies the conversational
 and outbound-call interface.
 
-This document describes the system as implemented on 2026-09-04. It is not a
+This document describes the system as implemented on 2026-09-05. It is not a
 claim that every planned automation is production-ready.
 
 ## Current hosted status
@@ -25,9 +25,9 @@ RPC incident. These database functions are executable through the API only by
 `public`, `anon`, and `authenticated` remain denied. Deterministic task-state
 conflicts use non-retryable SQLSTATE `PT409`, and the Edge Function maps them
 to HTTP 409. A delivery-aware wrapper atomically identifies idempotent wake
-replays. The restoration passed 51 local assertions and one monitored hosted
-canary covering a new wake and a same-call-ID replay. No ElevenLabs call was
-placed during the canary.
+replays. The restoration and dispatch outbox pass 70 local assertions.
+Restoration also passed one monitored hosted canary covering a new wake and a
+same-call-ID replay. No ElevenLabs call was placed during the canary.
 
 ## Components
 
@@ -42,15 +42,17 @@ Supabase Edge Functions
        v
 PostgREST -> PostgreSQL functions
                     |
-             -----------------
-             |               |
-             v               v
-       public.tasks    public.task_events
-       current state   append-only history
+             -----------------------------------------
+             |               |                       |
+             v               v                       v
+       public.tasks    public.task_events    public.task_dispatches
+       current state   append-only history   durable side-effect queue
 
 Paused dependency -> n8n webhook -> wake-task -> task becomes ready
+
+Task decision -> enqueue-dispatch -> n8n worker -> external provider
                                       |
-                                      +-> optional ElevenLabs callback
+                               complete or retry
 ```
 
 ### Supabase
@@ -71,6 +73,8 @@ The migration history is in `supabase/migrations/`:
 - `20260904183000_make_task_conflicts_non_retryable.sql`
 - `20260905100000_add_wake_task_delivery.sql`
 - `20260905113000_restore_turn_engine_service_role.sql`
+- `20260905160000_add_task_dispatch_outbox.sql`
+- `20260905161000_recover_stale_task_dispatches.sql`
 
 ### Edge Functions
 
@@ -97,6 +101,10 @@ Implemented endpoints:
 | `decide-task-turn` | Deterministically pause or complete a running turn. |
 | `process-task` | Start and decide a turn atomically in one RPC. |
 | `wake-task` | Resume a paused task from a user, external, or timer trigger. |
+| `enqueue-dispatch` | Idempotently record an external side-effect intent. |
+| `claim-dispatch` | Lease the next due intent to one worker. |
+| `complete-dispatch` | Record successful provider delivery. |
+| `retry-dispatch` | Delay a failed attempt or mark exhausted work failed. |
 
 `process-task` is the preferred deterministic turn endpoint. Narrow endpoints
 remain useful for controlled testing and specialized orchestration.
@@ -113,7 +121,7 @@ The current n8n project contains the published **Wake Task** workflow
 Webhook --immediate 2xx--> sender
     |
     v
-Supabase wake-task -> replayed == false -> optional ElevenLabs outbound call
+Supabase wake-task -> replayed == false -> continue task orchestration
                    -> replayed == true  -> stop
 ```
 
@@ -122,8 +130,15 @@ react to one trigger and make a bounded number of calls. It must not poll a
 state transition in a tight loop. The webhook should acknowledge immediately,
 and the outbound-call branch must run only when `replayed` is `false`.
 
-The published workflow implements that shape and has a one-minute execution
-timeout. Node-level retries are disabled and errors stop the workflow.
+The published workflow currently still contains the legacy direct ElevenLabs
+branch. Remove it only after a separate dispatch worker is published. The wake
+workflow has a one-minute execution timeout. Node-level retries are disabled
+and errors stop the workflow.
+
+The dispatch worker claims one row, performs exactly the declared side effect,
+then completes it or schedules a bounded retry. Claims are exclusive. A claim
+older than five minutes is abandoned; the next claim operation either returns
+it to the queue or marks it failed when its attempt budget is exhausted.
 
 ### ElevenLabs
 
@@ -174,6 +189,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 42 assertions. Hosted testing must
-remain disabled until containment is deliberately lifted according to the
-operations runbook.
+The current database test suite contains 70 assertions. Hosted transition
+access is restored only to `service_role`; follow the operations runbook for
+hosted canaries.

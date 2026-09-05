@@ -35,6 +35,23 @@ Never call `wait-for-user` on a `new` task. It requires `running`. Prefer the
 atomic `process-task` endpoint, which starts and pauses the task in one
 transaction.
 
+## Dispatch worker rules
+
+Run outbound side effects in a workflow separate from **Wake Task**:
+
+1. Call `claim-dispatch` with a stable worker ID.
+2. Stop successfully when the response contains `dispatch: null`.
+3. Route only recognized `dispatch_type` values to their provider node.
+4. On provider success, call `complete-dispatch` with the same worker ID.
+5. On a transient provider error, call `retry-dispatch` once with a bounded
+   delay. Do not add an n8n node retry around that request.
+6. Treat 400, 401, 403, 404, 409, and 422 as terminal configuration or state
+   errors requiring inspection, not automatic retry.
+
+Each claim is a five-minute lease. If a workflow crashes, a later claim
+recovers the abandoned row. Recovery increments the attempt count when another
+worker claims it; a row at `max_attempts` becomes `failed`.
+
 ## Caller identification
 
 Postgres sees PostgREST as an internal connection, so `pg_stat_activity` alone

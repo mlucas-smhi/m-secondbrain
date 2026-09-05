@@ -1,11 +1,10 @@
 # Turn engine
 
-> **Operational notice (2026-09-04):** Hosted execution of `advance_task`,
-> `process_task_turn`, and `wake_task` is temporarily revoked following a
-> runaway RPC incident.
-> Do not use hosted turn-processing endpoints until the restoration checklist
-> in [`../docs/turn-engine-runbook.md`](../docs/turn-engine-runbook.md) is
-> complete. Architecture and incident details are in
+> **Operational notice (2026-09-05):** Hosted turn processing is restored only
+> to `service_role`. External callers must use the authenticated Edge Functions.
+> The safe canary procedure is in
+> [`../docs/turn-engine-runbook.md`](../docs/turn-engine-runbook.md). Architecture
+> and incident details are in
 > [`../docs/turn-engine.md`](../docs/turn-engine.md) and
 > [`../docs/incidents/2026-09-04-runaway-turn-rpc.md`](../docs/incidents/2026-09-04-runaway-turn-rpc.md).
 
@@ -259,3 +258,30 @@ Example first-delivery response:
 ```
 
 An idempotent replay returns `outcome: "replayed"` and `replayed: true`.
+
+## Durable side-effect dispatch
+
+External actions are stored in `public.task_dispatches` before a worker calls
+a provider. The four dispatch Edge Functions use the same authenticated
+headers as the turn endpoints.
+
+POST an idempotent intent to `enqueue-dispatch`:
+
+```json
+{
+  "task_id": "00000000-0000-0000-0000-000000000000",
+  "dispatch_type": "elevenlabs.outbound_call",
+  "dedupe_key": "task-turn-7-callback",
+  "payload": { "to_number": "+15555550100" },
+  "max_attempts": 3
+}
+```
+
+The same task and `dedupe_key` return the original row without replacing it.
+A worker POSTs `{ "worker_id": "n8n-dispatcher" }` to `claim-dispatch`. It
+receives `dispatch: null` or one exclusive five-minute lease. The same worker
+then calls `complete-dispatch` with a JSON `result`, or `retry-dispatch` with
+an `error` and `delay_seconds` between 1 and 3600.
+
+Attempts are capped at `max_attempts` (1–10). The next claim recovers an
+abandoned lease; exhausted work becomes `failed` instead of looping.
