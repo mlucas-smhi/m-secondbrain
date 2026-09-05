@@ -6,6 +6,8 @@ import {
   validCallId,
 } from "../_shared/turn-http.ts";
 
+// Gateway JWT verification is disabled; runtimeConfig enforces X-Turn-Engine-Key.
+
 type ClaimDispatchRequest = { worker_id?: unknown };
 
 Deno.serve(async (request) => {
@@ -42,4 +44,3 @@ Deno.serve(async (request) => {
 
   return json(200, { dispatch: result[0] ?? null });
 });
-
