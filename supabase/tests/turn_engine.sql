@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(43);
+SELECT plan(47);
 
 SELECT lives_ok(
   $$
@@ -476,6 +476,49 @@ SELECT is(
     WHERE task_id = '00000000-0000-4000-8000-000000000102'),
   1,
   'replaying a wake creates no duplicate event'
+);
+
+INSERT INTO public.tasks (
+  id, task_type, goal, status, waiting_for, pending_question, resume_condition
+)
+VALUES (
+  '00000000-0000-4000-8000-000000000106', 'test',
+  'Gate downstream effects after wake', 'waiting_user', 'user',
+  'Which day works?', 'User supplies a day'
+);
+
+SELECT is(
+  (public.wake_task_delivery(
+    '00000000-0000-4000-8000-000000000106', 'user_response',
+    'wake-delivery-1', '{"answer":"Monday"}'::jsonb, 'test-runner'
+  )->>'replayed')::boolean,
+  false,
+  'a newly applied delivery is marked as new'
+);
+
+SELECT is(
+  public.wake_task_delivery(
+    '00000000-0000-4000-8000-000000000106', 'user_response',
+    'wake-delivery-1', '{"answer":"Tuesday"}'::jsonb, 'test-runner'
+  )->>'replayed',
+  'true',
+  'a repeated delivery is marked as replayed'
+);
+
+SELECT is(
+  public.wake_task_delivery(
+    '00000000-0000-4000-8000-000000000106', 'user_response',
+    'wake-delivery-1', '{"answer":"Tuesday"}'::jsonb, 'test-runner'
+  )->'task'->>'status',
+  'ready',
+  'a replay returns the current task snapshot'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_events
+    WHERE task_id = '00000000-0000-4000-8000-000000000106'),
+  1,
+  'the delivery wrapper creates only one wake event'
 );
 
 INSERT INTO public.tasks (id, task_type, goal, status, waiting_for)

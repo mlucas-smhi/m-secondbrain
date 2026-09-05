@@ -104,8 +104,14 @@ but the incorrect retryable SQLSTATE is the amplification trigger.
 
 ## Follow-up work
 
-- Replace SQLSTATE `40001` for stale task state with a non-retryable application
-  error and preserve its HTTP 409 mapping at the Edge Function boundary.
+- [x] Replace SQLSTATE `40001` for stale task state with a non-retryable
+  application error and preserve its HTTP 409 mapping at the Edge Function
+  boundary.
+- [x] Make wake delivery replays explicit so integration side effects can be
+  gated atomically.
+- [x] Configure the n8n webhook to acknowledge immediately, disable node
+  retries, gate the ElevenLabs branch to new deliveries, and cap executions at
+  one minute.
 - Identify the exact Edge Function behind each of the three timed-out requests.
 - Add bounded retries, backoff, non-retryable conflict handling, and workflow
   concurrency limits.

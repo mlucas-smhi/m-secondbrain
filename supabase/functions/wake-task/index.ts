@@ -46,7 +46,7 @@ Deno.serve(async (request) => {
   const { ok, result } = await callRpc(
     config.supabaseUrl,
     config.serviceRoleKey,
-    "wake_task",
+    "wake_task_delivery",
     {
       p_task_id: body.task_id,
       p_trigger_type: body.trigger_type,
@@ -57,9 +57,25 @@ Deno.serve(async (request) => {
   );
 
   if (!ok) {
-    console.error("wake_task failed", result);
+    console.error("wake_task_delivery failed", result);
     return json(postgresStatus(result), { error: "task_not_woken", details: result });
   }
 
-  return json(200, { outcome: "ready", trigger_type: body.trigger_type, task: result });
+  const delivery = result as { task?: unknown; replayed?: unknown } | null;
+  if (
+    !delivery ||
+    typeof delivery !== "object" ||
+    typeof delivery.replayed !== "boolean" ||
+    !("task" in delivery)
+  ) {
+    console.error("wake_task_delivery returned an invalid result", result);
+    return json(502, { error: "invalid_wake_result" });
+  }
+
+  return json(200, {
+    outcome: delivery.replayed ? "replayed" : "ready",
+    trigger_type: body.trigger_type,
+    replayed: delivery.replayed,
+    task: delivery.task,
+  });
 });

@@ -112,9 +112,13 @@ grant execute on function public.process_task_turn(
 grant execute on function public.wake_task(
   uuid, text, text, jsonb, text
 ) to service_role;
+
+grant execute on function public.wake_task_delivery(
+  uuid, text, text, jsonb, text
+) to service_role;
 ```
 
-Do not grant either function to `public`, `anon`, or `authenticated`.
+Do not grant any transition function to `public`, `anon`, or `authenticated`.
 
 After restoration, send one canary request and verify exactly the expected task
 events before allowing automated traffic.

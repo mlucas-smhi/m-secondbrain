@@ -243,3 +243,19 @@ Supported trigger/status pairs are:
 Successful wakes clear the waiting fields and move the task to `ready`. The
 trigger payload is preserved on the immutable event. Callers must reuse the
 same `call_id` when retrying a delivery; replays do not add another event.
+The HTTP response also includes `replayed`. Integration workflows must only
+perform downstream side effects, such as placing an outbound call, when that
+value is `false`.
+
+Example first-delivery response:
+
+```json
+{
+  "outcome": "ready",
+  "trigger_type": "user_response",
+  "replayed": false,
+  "task": {}
+}
+```
+
+An idempotent replay returns `outcome: "replayed"` and `replayed: true`.

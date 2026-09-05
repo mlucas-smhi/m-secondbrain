@@ -20,12 +20,14 @@ database functions:
 - `public.advance_task`
 - `public.process_task_turn`
 - `public.wake_task`
+- `public.wake_task_delivery`
 
 The project restart completed and the error flood stopped. Task and event data
 were not deleted. `wake_task` was not part of the original emergency
 revocation, but the follow-up safety migration closes it because it delegates
-to `advance_task`. `create_task` remains available. Do not restore the contained
-RPCs until the runbook exit criteria are met.
+to `advance_task`. The delivery-aware wrapper is also closed. `create_task`
+remains available. Do not restore the contained RPCs until the runbook exit
+criteria are met.
 
 ## Components
 
@@ -66,6 +68,8 @@ The migration history is in `supabase/migrations/`:
 - `20260903190000_add_create_task.sql`
 - `20260903200000_add_process_task_turn.sql`
 - `20260903230000_add_wake_task.sql`
+- `20260904183000_make_task_conflicts_non_retryable.sql`
+- `20260905100000_add_wake_task_delivery.sql`
 
 ### Edge Functions
 
@@ -105,12 +109,20 @@ The current n8n project contains the published **Wake Task** workflow
 (`xDPbVm9ngGIeuhJB`). Its intended path is:
 
 ```text
-Webhook -> Supabase wake-task -> optional ElevenLabs outbound call
+Webhook --immediate 2xx--> sender
+    |
+    v
+Supabase wake-task -> replayed == false -> optional ElevenLabs outbound call
+                   -> replayed == true  -> stop
 ```
 
 n8n is the integration and waiting layer, not the task state machine. It should
 react to one trigger and make a bounded number of calls. It must not poll a
-state transition in a tight loop.
+state transition in a tight loop. The webhook should acknowledge immediately,
+and the outbound-call branch must run only when `replayed` is `false`.
+
+The published workflow implements that shape and has a one-minute execution
+timeout. Node-level retries are disabled and errors stop the workflow.
 
 ### ElevenLabs
 
