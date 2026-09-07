@@ -8,7 +8,7 @@ state and transition integrity. n8n connects asynchronous systems and wakes a
 task when its dependency is satisfied. ElevenLabs supplies the conversational
 and outbound-call interface.
 
-This document describes the system as implemented on 2026-09-05. It is not a
+This document describes the system as implemented on 2026-09-07. It is not a
 claim that every planned automation is production-ready.
 
 ## Current hosted status
@@ -28,6 +28,12 @@ to HTTP 409. A delivery-aware wrapper atomically identifies idempotent wake
 replays. The restoration and dispatch outbox pass 70 local assertions.
 Restoration also passed one monitored hosted canary covering a new wake and a
 same-call-ID replay. No ElevenLabs call was placed during the canary.
+
+The **Dispatch Task Actions** n8n workflow is published on a 30-second
+schedule. A hosted outbound-call canary completed with clear bidirectional
+audio after the ElevenLabs agent input and output formats were set to
+`ulaw_8000`. The `elevenlabs-post-call` receiver is implemented locally and
+awaits secret configuration, deployment, and a signed hosted canary.
 
 ## Components
 
@@ -105,6 +111,7 @@ Implemented endpoints:
 | `claim-dispatch` | Lease the next due intent to one worker. |
 | `complete-dispatch` | Record successful provider delivery. |
 | `retry-dispatch` | Delay a failed attempt or mark exhausted work failed. |
+| `elevenlabs-post-call` | Verify a signed post-call transcript and wake its task. |
 
 `process-task` is the preferred deterministic turn endpoint. Narrow endpoints
 remain useful for controlled testing and specialized orchestration.
@@ -115,7 +122,7 @@ ID. A distinct ID represents a distinct operation and can create a new event.
 ### n8n
 
 The current n8n project contains the published **Wake Task** workflow
-(`xDPbVm9ngGIeuhJB`). Its intended path is:
+(`xDPbVm9ngGIeuhJB`). Its path is:
 
 ```text
 Webhook --immediate 2xx--> sender
@@ -130,10 +137,14 @@ react to one trigger and make a bounded number of calls. It must not poll a
 state transition in a tight loop. The webhook should acknowledge immediately,
 and the outbound-call branch must run only when `replayed` is `false`.
 
-The published workflow currently still contains the legacy direct ElevenLabs
-branch. Remove it only after a separate dispatch worker is published. The wake
-workflow has a one-minute execution timeout. Node-level retries are disabled
-and errors stop the workflow.
+The wake workflow has a one-minute execution timeout. Node-level retries are
+disabled and errors stop the workflow.
+
+The published **Dispatch Task Actions** workflow (`9hKGWXWH8btLiaUg`) runs
+every 30 seconds. It claims at most one dispatch, routes by dispatch type,
+calls the provider, and records completion or a bounded retry. Its
+`elevenlabs.outbound_call` route has passed a hosted bidirectional audio
+canary.
 
 The dispatch worker claims one row, performs exactly the declared side effect,
 then completes it or schedules a bounded retry. Claims are exclusive. A claim
@@ -146,6 +157,31 @@ ElevenLabs is the voice interaction layer. A configured agent and assigned
 phone number can make callbacks after n8n receives a wake event. Provider IDs,
 phone numbers, credentials, and secrets belong in provider configuration or a
 secret manager, not in repository documentation.
+
+Outbound calls include the task ID in conversation dynamic variables. After
+analysis completes, ElevenLabs sends a signed `post_call_transcription` event
+to `elevenlabs-post-call`. The Edge Function verifies the HMAC signature over
+the raw body, restricts delivery to the configured agent, and wakes the task
+with an idempotency key derived from the conversation ID. It stores a bounded
+transcript and analysis summary but omits raw telephony metadata and phone
+numbers.
+
+The function requires two additional Edge Function secrets/config values:
+
+```text
+ELEVENLABS_WEBHOOK_SECRET=<generated webhook signing secret>
+ELEVENLABS_AGENT_ID=<expected agent ID>
+```
+
+Configure the ElevenLabs workspace webhook URL as:
+
+```text
+https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/elevenlabs-post-call
+```
+
+Enable `post_call_transcription`; audio delivery is not required. A callback
+that represents an answer should use dynamic variable
+`trigger_type=user_response`; other values map to `external_event`.
 
 ## Task lifecycle
 

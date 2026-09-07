@@ -285,3 +285,25 @@ an `error` and `delay_seconds` between 1 and 3600.
 
 Attempts are capped at `max_attempts` (1–10). The next claim recovers an
 abandoned lease; exhausted work becomes `failed` instead of looping.
+
+## ElevenLabs post-call delivery
+
+`elevenlabs-post-call` receives a `post_call_transcription` webhook after call
+analysis completes. It does not use `X-Turn-Engine-Key`: it authenticates the
+provider by verifying the `ElevenLabs-Signature` HMAC over the unmodified
+request body. Configure these Edge Function values before deployment:
+
+```text
+ELEVENLABS_WEBHOOK_SECRET=<generated webhook signing secret>
+ELEVENLABS_AGENT_ID=<expected agent ID>
+```
+
+The outbound call must include `task_id` in
+`conversation_initiation_client_data.dynamic_variables`. Set
+`trigger_type=user_response` when the call is collecting a user answer;
+otherwise the receiver treats the callback as `external_event`.
+
+The receiver derives its idempotent call ID from the ElevenLabs conversation
+ID. Replays and deterministic task-state conflicts receive HTTP 200 so
+provider retries cannot create a hot loop. Transient database failures return
+5xx and remain retryable.
