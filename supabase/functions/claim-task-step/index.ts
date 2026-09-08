@@ -11,6 +11,7 @@ import {
 type ClaimTaskStepRequest = {
   worker_id?: unknown;
   lease_seconds?: unknown;
+  supported_step_types?: unknown;
 };
 
 Deno.serve(async (request) => {
@@ -28,6 +29,14 @@ Deno.serve(async (request) => {
 
   if (!validCallId(body.worker_id)) return json(400, { error: "worker_id_required" });
 
+  if (
+    !Array.isArray(body.supported_step_types) ||
+    body.supported_step_types.length === 0 ||
+    !body.supported_step_types.every((value) => validCallId(value))
+  ) {
+    return json(400, { error: "supported_step_types_required" });
+  }
+
   const leaseSeconds = body.lease_seconds ?? 300;
   if (
     !Number.isInteger(leaseSeconds) ||
@@ -44,6 +53,7 @@ Deno.serve(async (request) => {
     {
       p_worker_id: body.worker_id.trim(),
       p_lease_seconds: leaseSeconds,
+      p_step_types: body.supported_step_types.map((value) => value.trim()),
     },
   );
 

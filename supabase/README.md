@@ -171,7 +171,8 @@ runnable step through `functions/claim-task-step`:
 ```json
 {
   "worker_id": "n8n-task-runner",
-  "lease_seconds": 300
+  "lease_seconds": 300,
+  "supported_step_types": ["test.noop", "elevenlabs.outbound_call"]
 }
 ```
 
@@ -179,6 +180,8 @@ The response contains `step: null` when the queue is idle. A claimed step
 includes an opaque `claim_token`; only that token may complete the step before
 its lease expires. Claims increment the bounded attempt count. Expired work is
 returned to `ready`, or marked `failed` after its attempt budget is exhausted.
+The capability allowlist is applied before locking, so a worker cannot lease a
+step type for which it has no handler.
 
 Task initiators, scoped authority grants, approvals, closure recipients, and
 provider-neutral memory references have dedicated tables. Repository paths are

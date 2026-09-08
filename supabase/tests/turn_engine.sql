@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(111);
+SELECT plan(112);
 
 SELECT lives_ok(
   $$
@@ -1247,7 +1247,14 @@ SELECT is(
 );
 
 SELECT is(
-  (SELECT step_key FROM public.claim_task_step('planner-worker', 300)),
+  (SELECT count(*)::integer
+     FROM public.claim_task_step('call-only-worker', 300, ARRAY['elevenlabs.outbound_call'])),
+  0,
+  'a worker cannot claim a runnable step type it does not advertise'
+);
+
+SELECT is(
+  (SELECT step_key FROM public.claim_task_step('planner-worker', 300, ARRAY['research.travel'])),
   'research-hotels',
   'only the first dependency-safe planned step is runnable'
 );

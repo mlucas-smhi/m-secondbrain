@@ -32,6 +32,10 @@
             {
               "name": "worker_id",
               "value": "n8n-step-worker"
+            },
+            {
+              "name": "supported_step_types",
+              "value": "={{ [\"test.noop\", \"elevenlabs.outbound_call\"] }}"
             }
           ]
         },

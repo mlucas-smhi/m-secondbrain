@@ -248,6 +248,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 111 assertions. Hosted transition
+The current database test suite contains 112 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

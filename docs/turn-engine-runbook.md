@@ -56,7 +56,8 @@ worker claims it; a row at `max_attempts` becomes `failed`.
 
 The task layer claims executable steps rather than parent tasks:
 
-1. Call `claim-task-step` with a stable worker ID and bounded lease.
+1. Call `claim-task-step` with a stable worker ID, bounded lease, and a non-empty
+   `supported_step_types` capability allowlist.
 2. Stop successfully when the response contains `step: null`.
 3. Route exactly once on the returned `step_type`.
 4. Pass the opaque `claim_token` when completing the step.
