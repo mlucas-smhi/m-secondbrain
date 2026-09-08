@@ -162,6 +162,33 @@ Complete the task:
 The outcome-specific functions remain available as narrow building blocks, but
 new orchestration code should normally call `decide-task-turn`.
 
+## Durable task-step graph
+
+Parent tasks describe goals. Executable work lives in `task_steps`, with
+ordering in `task_step_dependencies`. A scheduled n8n worker claims one
+runnable step through `functions/claim-task-step`:
+
+```json
+{
+  "worker_id": "n8n-task-runner",
+  "lease_seconds": 300
+}
+```
+
+The response contains `step: null` when the queue is idle. A claimed step
+includes an opaque `claim_token`; only that token may complete the step before
+its lease expires. Claims increment the bounded attempt count. Expired work is
+returned to `ready`, or marked `failed` after its attempt budget is exhausted.
+
+Task initiators, scoped authority grants, approvals, closure recipients, and
+provider-neutral memory references have dedicated tables. Repository paths are
+not embedded in the execution model.
+
+Decisions are first-class records with declared options and a linked gate.
+`functions/resolve-task-decision` records the selected option and rationale,
+satisfies the gate in the same transaction, and makes every dependency-safe
+downstream step eligible for a future claim.
+
 ## Task creation
 
 `functions/create-task` replaces manual inserts into `public.tasks`. It creates

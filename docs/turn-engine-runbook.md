@@ -52,6 +52,23 @@ Each claim is a five-minute lease. If a workflow crashes, a later claim
 recovers the abandoned row. Recovery increments the attempt count when another
 worker claims it; a row at `max_attempts` becomes `failed`.
 
+## Task-step worker rules
+
+The task layer claims executable steps rather than parent tasks:
+
+1. Call `claim-task-step` with a stable worker ID and bounded lease.
+2. Stop successfully when the response contains `step: null`.
+3. Route exactly once on the returned `step_type`.
+4. Pass the opaque `claim_token` when completing the step.
+5. Reuse the completion idempotency key if the response is lost.
+6. Never claim another step inside the same workflow execution.
+
+Dependencies are satisfied only by completed prerequisite steps. An expired
+lease is recovered on the next claim and consumes the existing attempt; the
+step is failed when its attempt budget is exhausted. A worker must not continue
+after its lease expires, and external effects must still go through the durable
+dispatch outbox.
+
 ## Caller identification
 
 Postgres sees PostgREST as an internal connection, so `pg_stat_activity` alone

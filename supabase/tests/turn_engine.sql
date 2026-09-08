@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(70);
+SELECT plan(92);
 
 SELECT lives_ok(
   $$
@@ -861,6 +861,301 @@ SELECT results_eq(
       WHERE task_id = '00000000-0000-4000-8000-000000000109' $$,
   $$ VALUES ('failed'::text, NULL::text, 'worker lease expired'::text) $$,
   'an exhausted expired dispatch becomes a terminal failure'
+);
+
+INSERT INTO public.tasks (id, task_type, goal, status)
+VALUES (
+  '00000000-0000-4000-8000-000000000110',
+  'travel',
+  'Plan and communicate an approved trip',
+  'ready'
+);
+
+INSERT INTO public.task_steps (
+  id, task_id, step_key, step_type, status, priority, idempotency_key
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000110',
+    'research-options', 'research.travel', 'ready', 2, 'travel-research-v1'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000202',
+    '00000000-0000-4000-8000-000000000110',
+    'send-options', 'email.send', 'pending', 1, 'travel-email-v1'
+  );
+
+INSERT INTO public.task_step_dependencies (task_id, step_id, depends_on_step_id)
+VALUES (
+  '00000000-0000-4000-8000-000000000110',
+  '00000000-0000-4000-8000-000000000202',
+  '00000000-0000-4000-8000-000000000201'
+);
+
+SELECT throws_ok(
+  $$ INSERT INTO public.task_step_dependencies (
+       task_id, step_id, depends_on_step_id
+     ) VALUES (
+       '00000000-0000-4000-8000-000000000110',
+       '00000000-0000-4000-8000-000000000201',
+       '00000000-0000-4000-8000-000000000202'
+     ) $$,
+  '22023',
+  'task step dependency cycle detected',
+  'the execution graph rejects dependency cycles'
+);
+
+INSERT INTO public.task_gates (id, task_id, gate_key, gate_type, condition)
+VALUES (
+  '00000000-0000-4000-8000-000000000301',
+  '00000000-0000-4000-8000-000000000110',
+  'hotel-choice',
+  'decision',
+  '{"question":"Which hotel?"}'::jsonb
+);
+
+INSERT INTO public.task_step_gates (task_id, step_id, gate_id)
+VALUES (
+  '00000000-0000-4000-8000-000000000110',
+  '00000000-0000-4000-8000-000000000202',
+  '00000000-0000-4000-8000-000000000301'
+);
+
+INSERT INTO public.task_decisions (
+  id, task_id, gate_id, title, owner_ref, requested_by_ref, question,
+  preference_dimension, recommendation_key
+) VALUES (
+  '00000000-0000-4000-8000-000000000401',
+  '00000000-0000-4000-8000-000000000110',
+  '00000000-0000-4000-8000-000000000301',
+  'Hotel for NYC', 'person:m', 'agent:11', 'Which hotel should we book?',
+  'location versus loyalty points', 'langham'
+);
+
+INSERT INTO public.task_decision_options (
+  decision_id, option_key, label, tradeoffs, rank
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000401',
+    'four-seasons', 'Four Seasons', '{"strength":"loyalty"}'::jsonb, 2
+  ),
+  (
+    '00000000-0000-4000-8000-000000000401',
+    'langham', 'Langham', '{"strength":"location"}'::jsonb, 1
+  );
+
+SELECT results_eq(
+  $$ SELECT id, status, attempt_count
+       FROM public.claim_task_step('research-worker', 300) $$,
+  $$ VALUES (
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       'running'::text,
+       1
+     ) $$,
+  'the first runnable step is claimed with one attempt'
+);
+
+SELECT ok(
+  (SELECT claim_token IS NOT NULL FROM public.task_steps
+    WHERE id = '00000000-0000-4000-8000-000000000201'),
+  'a claimed step receives an opaque claim token'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_step_events
+    WHERE step_id = '00000000-0000-4000-8000-000000000201'
+      AND event_type = 'step.claimed'),
+  1,
+  'claiming appends one step event'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_step('email-worker', 300)),
+  0,
+  'a dependent step is blocked until its prerequisite completes'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.complete_task_step(
+       '00000000-0000-4000-8000-000000000201',
+       '00000000-0000-4000-8000-000000000999',
+       'research-complete-v1',
+       '{}'::jsonb
+     ) $$,
+  'PT409',
+  'task step claim is stale',
+  'a stale claim token cannot complete a step'
+);
+
+SELECT results_eq(
+  $$ SELECT status, output->>'summary'
+       FROM public.complete_task_step(
+         '00000000-0000-4000-8000-000000000201',
+         (SELECT claim_token FROM public.task_steps
+           WHERE id = '00000000-0000-4000-8000-000000000201'),
+         'research-complete-v1',
+         '{"summary":"three options"}'::jsonb
+       ) $$,
+  $$ VALUES ('completed'::text, 'three options'::text) $$,
+  'the lease owner can complete a step'
+);
+
+SELECT results_eq(
+  $$ SELECT status, output->>'summary'
+       FROM public.complete_task_step(
+         '00000000-0000-4000-8000-000000000201',
+         NULL,
+         'research-complete-v1',
+         '{"summary":"ignored replay"}'::jsonb
+       ) $$,
+  $$ VALUES ('completed'::text, 'three options'::text) $$,
+  'a completion replay returns the original step state'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.claim_task_step('email-worker', 300)),
+  0,
+  'a completed prerequisite does not bypass an unresolved decision gate'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.resolve_task_decision(
+       '00000000-0000-4000-8000-000000000401',
+       'person:m', 'ritz', 'Invalid option', 'hotel-decision-invalid'
+     ) $$,
+  '22023',
+  'decision option not found',
+  'a decision cannot resolve to an undeclared option'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.resolve_task_decision(
+       '00000000-0000-4000-8000-000000000401',
+       'person:someone-else', 'langham', 'Not the owner', 'hotel-wrong-owner'
+     ) $$,
+  'PT409',
+  'decision actor is not owner',
+  'only the declared decision owner can resolve it'
+);
+
+SELECT results_eq(
+  $$ SELECT status, selected_option_key, resolution_note
+       FROM public.resolve_task_decision(
+         '00000000-0000-4000-8000-000000000401',
+         'person:m', 'langham', 'Location matters more.', 'hotel-decision-v1'
+       ) $$,
+  $$ VALUES ('resolved'::text, 'langham'::text, 'Location matters more.'::text) $$,
+  'resolving a decision records the selected option and rationale'
+);
+
+SELECT results_eq(
+  $$ SELECT decision.status, gate.status
+       FROM public.task_decisions AS decision
+       JOIN public.task_gates AS gate ON gate.id = decision.gate_id
+      WHERE decision.id = '00000000-0000-4000-8000-000000000401' $$,
+  $$ VALUES ('resolved'::text, 'satisfied'::text) $$,
+  'a resolved decision atomically satisfies its downstream gate'
+);
+
+SELECT is(
+  (SELECT execution_status FROM public.tasks
+    WHERE id = '00000000-0000-4000-8000-000000000110'),
+  'ready',
+  'satisfying the decision gate refreshes the parent task roll-up'
+);
+
+SELECT results_eq(
+  $$ SELECT id, status, attempt_count
+       FROM public.claim_task_step('email-worker', 300) $$,
+  $$ VALUES (
+       '00000000-0000-4000-8000-000000000202'::uuid,
+       'running'::text,
+       1
+     ) $$,
+  'completing a prerequisite makes its dependent step runnable'
+);
+
+SELECT is(
+  (SELECT execution_status FROM public.tasks
+    WHERE id = '00000000-0000-4000-8000-000000000110'),
+  'running',
+  'claiming a downstream step refreshes the parent task roll-up'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.thread_participants (
+      thread_id, actor_type, actor_ref, identity_confidence, roles
+    ) VALUES (
+      (SELECT thread_id FROM public.tasks
+        WHERE id = '00000000-0000-4000-8000-000000000110'),
+      'person', 'person:m', 'trusted', ARRAY['initiator', 'owner', 'approver']
+    );
+    INSERT INTO public.task_authority_grants (
+      task_id, grantee_ref, granted_by_ref, scope
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000110',
+      'agent:11', 'person:m', '{"email.send":true}'::jsonb
+    );
+    INSERT INTO public.task_approvals (
+      task_id, step_id, requested_from_ref, scope, request_idempotency_key
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000110',
+      '00000000-0000-4000-8000-000000000202',
+      'person:m', '{"action":"email.send"}'::jsonb, 'approval-email-v1'
+    );
+    INSERT INTO public.task_closure_recipients (
+      task_id, recipient_ref, channel, delivery_policy
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000110',
+      'person:m', 'voice', 'on_terminal'
+    );
+    INSERT INTO public.task_memory_refs (
+      task_id, provider, namespace, external_ref, purpose
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000110',
+      'memory-service', 'preferences', 'memory:travel:primary', 'planning'
+    );
+  $$,
+  'task governance and provider-neutral memory references can be recorded'
+);
+
+SELECT is(
+  (SELECT participant.identity_confidence
+     FROM public.thread_participants AS participant
+     JOIN public.tasks AS task ON task.thread_id = participant.thread_id
+    WHERE task.id = '00000000-0000-4000-8000-000000000110'
+      AND participant.actor_ref = 'person:m'),
+  'trusted',
+  'the initiator record preserves identity confidence'
+);
+
+SELECT is(
+  (SELECT scope->>'email.send' FROM public.task_authority_grants
+    WHERE task_id = '00000000-0000-4000-8000-000000000110'),
+  'true',
+  'authority is stored as an explicit scoped grant'
+);
+
+SELECT is(
+  (SELECT status FROM public.task_approvals
+    WHERE task_id = '00000000-0000-4000-8000-000000000110'),
+  'pending',
+  'approval requests begin pending'
+);
+
+SELECT is(
+  (SELECT delivery_policy FROM public.task_closure_recipients
+    WHERE task_id = '00000000-0000-4000-8000-000000000110'),
+  'on_terminal',
+  'closure recipients have an explicit delivery policy'
+);
+
+SELECT is(
+  (SELECT provider FROM public.task_memory_refs
+    WHERE task_id = '00000000-0000-4000-8000-000000000110'),
+  'memory-service',
+  'task memory references are not coupled to GitHub'
 );
 
 SELECT * FROM finish();

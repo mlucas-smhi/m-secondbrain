@@ -431,6 +431,21 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/claim-dispatch/index.ts"
 
+[functions.claim-task-step]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/claim-task-step/index.ts"
+
+[functions.complete-task-step]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/complete-task-step/index.ts"
+
+[functions.resolve-task-decision]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/resolve-task-decision/index.ts"
+
 [functions.complete-dispatch]
 enabled = true
 verify_jwt = false

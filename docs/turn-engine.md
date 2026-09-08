@@ -32,8 +32,10 @@ same-call-ID replay. No ElevenLabs call was placed during the canary.
 The **Dispatch Task Actions** n8n workflow is published on a 30-second
 schedule. A hosted outbound-call canary completed with clear bidirectional
 audio after the ElevenLabs agent input and output formats were set to
-`ulaw_8000`. The `elevenlabs-post-call` receiver is implemented locally and
-awaits secret configuration, deployment, and a signed hosted canary.
+`ulaw_8000`. The signed `elevenlabs-post-call` receiver is deployed and has
+successfully moved a hosted `waiting_external` task to `ready`. The agent-level
+legacy n8n webhook override was removed so the agent inherits the workspace
+Supabase receiver.
 
 ## Components
 
@@ -53,6 +55,10 @@ PostgREST -> PostgreSQL functions
              v               v                       v
        public.tasks    public.task_events    public.task_dispatches
        current state   append-only history   durable side-effect queue
+             |
+             v
+       public.task_steps <-> public.task_step_dependencies
+       leased work units     explicit execution graph
 
 Paused dependency -> n8n webhook -> wake-task -> task becomes ready
 
@@ -81,6 +87,7 @@ The migration history is in `supabase/migrations/`:
 - `20260905113000_restore_turn_engine_service_role.sql`
 - `20260905160000_add_task_dispatch_outbox.sql`
 - `20260905161000_recover_stale_task_dispatches.sql`
+- `20260908160000_add_task_execution_graph.sql`
 
 ### Edge Functions
 
@@ -107,6 +114,9 @@ Implemented endpoints:
 | `decide-task-turn` | Deterministically pause or complete a running turn. |
 | `process-task` | Start and decide a turn atomically in one RPC. |
 | `wake-task` | Resume a paused task from a user, external, or timer trigger. |
+| `claim-task-step` | Lease the next runnable dependency-safe work step. |
+| `complete-task-step` | Complete a step using its active claim token. |
+| `resolve-task-decision` | Resolve a declared option and satisfy its gate atomically. |
 | `enqueue-dispatch` | Idempotently record an external side-effect intent. |
 | `claim-dispatch` | Lease the next due intent to one worker. |
 | `complete-dispatch` | Record successful provider delivery. |
@@ -150,6 +160,17 @@ The dispatch worker claims one row, performs exactly the declared side effect,
 then completes it or schedules a bounded retry. Claims are exclusive. A claim
 older than five minutes is abandoned; the next claim operation either returns
 it to the queue or marks it failed when its attempt budget is exhausted.
+
+The planned task-runner workflow claims `task_steps`, not parent tasks. Each
+step has a stable type and idempotency key plus an opaque claim token, bounded
+lease, and attempt budget. A step is runnable only after all explicit
+prerequisites complete. The parent `tasks` row remains the goal-level summary;
+step outputs and events provide the execution detail.
+
+Initiator identity, scoped authority, approvals, and closure recipients are
+stored separately from conversational context. Memory is referenced through
+provider-neutral `task_memory_refs`; GitHub can remain one provider during the
+transition but is not part of the execution schema.
 
 ### ElevenLabs
 
@@ -225,6 +246,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 70 assertions. Hosted transition
+The current database test suite contains 92 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.
