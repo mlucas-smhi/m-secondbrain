@@ -411,6 +411,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/create-task/index.ts"
 
+[functions.create-task-plan]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/create-task-plan/index.ts"
+
 [functions.process-task]
 enabled = true
 verify_jwt = false

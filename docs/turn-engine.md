@@ -114,6 +114,7 @@ Implemented endpoints:
 | `decide-task-turn` | Deterministically pause or complete a running turn. |
 | `process-task` | Start and decide a turn atomically in one RPC. |
 | `wake-task` | Resume a paused task from a user, external, or timer trigger. |
+| `create-task-plan` | Atomically create a thread, task, execution graph, decisions, and closure records. |
 | `claim-task-step` | Lease the next runnable dependency-safe work step. |
 | `complete-task-step` | Complete a step using its active claim token. |
 | `fail-task-step` | Record an error and requeue or terminally fail the claimed step. |
@@ -247,6 +248,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 99 assertions. Hosted transition
+The current database test suite contains 111 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

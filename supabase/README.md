@@ -189,6 +189,13 @@ Decisions are first-class records with declared options and a linked gate.
 satisfies the gate in the same transaction, and makes every dependency-safe
 downstream step eligible for a future claim.
 
+`functions/create-task-plan` is the atomic ingestion boundary for this model.
+Its request includes a caller-owned `call_id` and a structured `plan` containing
+the thread, parent task, steps, dependencies, decisions, participants, and
+closure recipients. References between graph objects use stable keys inside
+the request. An invalid reference or cycle rolls back the entire plan; replaying
+the same `call_id` returns the original snapshot without creating duplicates.
+
 ## Task creation
 
 `functions/create-task` replaces manual inserts into `public.tasks`. It creates

@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(99);
+SELECT plan(111);
 
 SELECT lives_ok(
   $$
@@ -1147,6 +1147,147 @@ SELECT is(
     WHERE id = '00000000-0000-4000-8000-000000000110'),
   'failed',
   'a terminal step failure refreshes the parent task roll-up'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.create_task_plan(
+    '{
+      "thread": {
+        "subject": "NYC lodging request",
+        "desired_outcome": "Select and prepare an approved NYC hotel booking",
+        "owner_ref": "person:m"
+      },
+      "task": {
+        "task_type": "travel",
+        "goal": "Research two hotels and prepare the selected booking",
+        "context": {"city":"New York","reason":"executive meeting"},
+        "priority": 2
+      },
+      "participants": [
+        {"actor_type":"person","actor_ref":"person:m","identity_confidence":"trusted","roles":["owner","approver"]},
+        {"actor_type":"person","actor_ref":"person:ea","identity_confidence":"verified","roles":["initiator","requester"]}
+      ],
+      "steps": [
+        {"key":"research-hotels","type":"research.travel","priority":1,"input":{"hotels":["Four Seasons","Langham"]}},
+        {"key":"brief-owner","type":"briefing.prepare","priority":2},
+        {"key":"prepare-booking","type":"reservation.prepare","priority":2}
+      ],
+      "dependencies": [
+        {"step_key":"brief-owner","depends_on_step_key":"research-hotels"},
+        {"step_key":"prepare-booking","depends_on_step_key":"brief-owner"}
+      ],
+      "decisions": [{
+        "key":"hotel-choice",
+        "title":"Hotel for NYC",
+        "owner_ref":"person:m",
+        "requested_by_ref":"person:ea",
+        "question":"Four Seasons or Langham?",
+        "preference_dimension":"location versus loyalty points",
+        "recommendation_key":"langham",
+        "blocks":["prepare-booking"],
+        "options":[
+          {"key":"four-seasons","label":"Four Seasons","tradeoffs":{"strength":"loyalty"},"rank":2},
+          {"key":"langham","label":"Langham","tradeoffs":{"strength":"location"},"rank":1}
+        ]
+      }],
+      "closure_recipients": [
+        {"recipient_ref":"person:m","channel":"voice","delivery_policy":"on_terminal"},
+        {"recipient_ref":"person:ea","channel":"email","delivery_policy":"on_terminal"}
+      ]
+    }'::jsonb,
+    'hotel-plan-v1',
+    'planner-test'
+  ) $$,
+  'a structured request atomically creates a task execution plan'
+);
+
+SELECT is(
+  (SELECT thread.subject FROM public.threads AS thread
+    JOIN public.tasks AS task ON task.thread_id = thread.id
+    JOIN public.task_events AS event ON event.task_id = task.id
+   WHERE event.call_id = 'hotel-plan-v1'),
+  'NYC lodging request',
+  'the plan preserves the durable thread subject'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_steps
+   WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  3,
+  'the plan creates every declared step'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_step_dependencies
+   WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  2,
+  'the plan creates explicit step dependencies'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_decision_options AS option
+    JOIN public.task_decisions AS decision ON decision.id = option.decision_id
+   WHERE decision.task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  2,
+  'the plan creates the declared decision options'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_step_gates
+   WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  1,
+  'the decision gate blocks its declared downstream step'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_closure_recipients
+   WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  2,
+  'the plan records everyone who must receive closure'
+);
+
+SELECT is(
+  (SELECT step_key FROM public.claim_task_step('planner-worker', 300)),
+  'research-hotels',
+  'only the first dependency-safe planned step is runnable'
+);
+
+SELECT lives_ok(
+  $$ SELECT public.create_task_plan(
+    (SELECT jsonb_build_object(
+      'thread', jsonb_build_object('subject', thread.subject, 'desired_outcome', thread.desired_outcome),
+      'task', jsonb_build_object('task_type', task.task_type, 'goal', task.goal),
+      'steps', '[]'::jsonb
+    ) FROM public.tasks AS task JOIN public.threads AS thread ON thread.id = task.thread_id LIMIT 1),
+    'hotel-plan-v1', 'planner-replay'
+  ) $$,
+  'a replay returns the existing plan before revalidating its body'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_events
+   WHERE event_type = 'task.planned' AND call_id = 'hotel-plan-v1'),
+  1,
+  'a replay cannot duplicate the planned task'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.create_task_plan(
+    '{"thread":{"subject":"Bad plan","desired_outcome":"Nothing persists"},
+      "task":{"task_type":"test","goal":"Reject invalid graph"},
+      "steps":[{"key":"only-step","type":"test.noop"}],
+      "dependencies":[{"step_key":"missing-step","depends_on_step_key":"only-step"}]}'::jsonb,
+    'invalid-plan-v1', 'planner-test'
+  ) $$,
+  '22023',
+  'dependency references an unknown step',
+  'an invalid dependency rejects the entire plan'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.threads WHERE subject = 'Bad plan'),
+  0,
+  'a rejected plan leaves no partial thread behind'
 );
 
 SELECT lives_ok(
