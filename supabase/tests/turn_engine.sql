@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(92);
+SELECT plan(99);
 
 SELECT lives_ok(
   $$
@@ -1080,6 +1080,73 @@ SELECT is(
     WHERE id = '00000000-0000-4000-8000-000000000110'),
   'running',
   'claiming a downstream step refreshes the parent task roll-up'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, last_error
+       FROM public.fail_task_step(
+         '00000000-0000-4000-8000-000000000202',
+         (SELECT claim_token FROM public.task_steps
+           WHERE id = '00000000-0000-4000-8000-000000000202'),
+         'email-failure-v1', 'temporary provider failure', 0
+       ) $$,
+  $$ VALUES ('ready'::text, 1, 'temporary provider failure'::text) $$,
+  'a worker failure requeues a step that has attempts remaining'
+);
+
+SELECT is(
+  (SELECT event_type FROM public.task_step_events
+    WHERE step_id = '00000000-0000-4000-8000-000000000202'
+      AND idempotency_key = 'email-failure-v1'),
+  'step.retry_scheduled',
+  'a retryable worker failure emits a durable retry event'
+);
+
+SELECT is(
+  (SELECT status FROM public.fail_task_step(
+    '00000000-0000-4000-8000-000000000202',
+    '00000000-0000-4000-8000-000000000999',
+    'email-failure-v1', 'duplicate delivery', 0)),
+  'ready',
+  'replaying the same failure idempotency key is harmless'
+);
+
+UPDATE public.task_steps
+   SET max_attempts = 2
+ WHERE id = '00000000-0000-4000-8000-000000000202';
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count
+       FROM public.claim_task_step('email-worker', 300) $$,
+  $$ VALUES ('running'::text, 2) $$,
+  'a requeued step can be claimed for its next attempt'
+);
+
+SELECT results_eq(
+  $$ SELECT status, attempt_count, last_error
+       FROM public.fail_task_step(
+         '00000000-0000-4000-8000-000000000202',
+         (SELECT claim_token FROM public.task_steps
+           WHERE id = '00000000-0000-4000-8000-000000000202'),
+         'email-failure-v2', 'permanent provider failure', 60
+       ) $$,
+  $$ VALUES ('failed'::text, 2, 'permanent provider failure'::text) $$,
+  'a worker failure exhausts the configured attempt budget'
+);
+
+SELECT is(
+  (SELECT event_type FROM public.task_step_events
+    WHERE step_id = '00000000-0000-4000-8000-000000000202'
+      AND idempotency_key = 'email-failure-v2'),
+  'step.failed',
+  'an exhausted worker failure emits a terminal event'
+);
+
+SELECT is(
+  (SELECT execution_status FROM public.tasks
+    WHERE id = '00000000-0000-4000-8000-000000000110'),
+  'failed',
+  'a terminal step failure refreshes the parent task roll-up'
 );
 
 SELECT lives_ok(

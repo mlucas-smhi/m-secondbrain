@@ -116,6 +116,7 @@ Implemented endpoints:
 | `wake-task` | Resume a paused task from a user, external, or timer trigger. |
 | `claim-task-step` | Lease the next runnable dependency-safe work step. |
 | `complete-task-step` | Complete a step using its active claim token. |
+| `fail-task-step` | Record an error and requeue or terminally fail the claimed step. |
 | `resolve-task-decision` | Resolve a declared option and satisfy its gate atomically. |
 | `enqueue-dispatch` | Idempotently record an external side-effect intent. |
 | `claim-dispatch` | Lease the next due intent to one worker. |
@@ -246,6 +247,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 92 assertions. Hosted transition
+The current database test suite contains 99 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

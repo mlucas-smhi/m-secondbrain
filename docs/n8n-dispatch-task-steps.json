@@ -1,0 +1,342 @@
+{
+  "name": "Dispatch Task Steps",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -192,
+        240
+      ],
+      "id": "ea354a24-3c07-4515-9cc4-82024c27f026",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/claim-task-step",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "worker_id",
+              "value": "n8n-step-worker"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        80,
+        192
+      ],
+      "id": "b451ab9d-4e0e-4bd2-8831-5a29c3c99851",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mJx2qian3IlJjQom",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e4300b9c-d28c-4056-85fd-c0656c71ad4a",
+              "leftValue": "={{ $json.step !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        208
+      ],
+      "id": "2846913e-5cb0-43a8-933b-7bea999bc777",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $node[\"HTTP Request\"].json.step.step_type }}",
+                    "rightValue": "test.noop",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "27b34a5e-ea05-47f5-94e1-fdf10104ba0a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2cd2e3c2-2e1a-4d11-a1f4-61ba03116bcf",
+                    "leftValue": "={{ $node[\"HTTP Request\"].json.step.step_type }}",
+                    "rightValue": "elevenlabs.outbound_call",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        128
+      ],
+      "id": "3e0ad159-bcd3-4313-b4e8-3c05c738051c",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/complete-task-step",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ step_id: $node[\"HTTP Request\"].json.step.id, claim_token: $node[\"HTTP Request\"].json.step.claim_token, idempotency_key: \"n8n-complete:\" + $node[\"HTTP Request\"].json.step.claim_token, output: { handler: \"test.noop\", worker_id: \"n8n-step-worker\" } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        832,
+        -32
+      ],
+      "id": "22edaba1-25c8-4500-9d51-c3f8692c03b1",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mJx2qian3IlJjQom",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "elevenLabsApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ agent_id: \"agent_01jyhnqm7efv1vn2dhh2n20h2z\", agent_phone_number_id: \"phnum_8601m1hh1yfefkmarparxwfc169r\", to_number: $node[\"HTTP Request\"].json.step.input.to_number, conversation_initiation_client_data: { dynamic_variables: { greeting: $node[\"HTTP Request\"].json.step.input.greeting ?? \"I'm calling about your task.\", agent_name: $node[\"HTTP Request\"].json.step.input.agent_name ?? \"Eleven\", user_name: $node[\"HTTP Request\"].json.step.input.user_name ?? \"Michael\", task_id: $node[\"HTTP Request\"].json.step.task_id, task_type: $node[\"HTTP Request\"].json.step.input.task_type ?? \"\", task_goal: $node[\"HTTP Request\"].json.step.input.task_goal ?? \"\", trigger_type: $node[\"HTTP Request\"].json.step.input.trigger_type ?? \"task_step\", trigger_data: JSON.stringify($node[\"HTTP Request\"].json.step.input.trigger_data ?? {}) } } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        736,
+        160
+      ],
+      "id": "7ea768a2-02e0-43c4-b2fe-f8b84e553bdf",
+      "name": "HTTP Request2",
+      "credentials": {
+        "elevenLabsApi": {
+          "id": "qLtZ8ZpsNOJKwwNB",
+          "name": "ElevenLabs account 2"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/complete-task-step",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ step_id: $node[\"HTTP Request\"].json.step.id, claim_token: $node[\"HTTP Request\"].json.step.claim_token, idempotency_key: \"n8n-complete:\" + $node[\"HTTP Request\"].json.step.claim_token, output: { provider: \"elevenlabs\", provider_response: $json } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1088,
+        128
+      ],
+      "id": "e5c8488a-e91c-41b4-9157-6a5ff38fd05d",
+      "name": "HTTP Request3",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mJx2qian3IlJjQom",
+          "name": "Header Auth account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/fail-task-step",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ step_id: $node[\"HTTP Request\"].json.step.id, claim_token: $node[\"HTTP Request\"].json.step.claim_token, idempotency_key: \"n8n-fail:\" + $node[\"HTTP Request\"].json.step.claim_token, error: String($json.error?.message ?? $json.message ?? \"ElevenLabs request failed\").slice(0, 1000), retry_delay_seconds: 30 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1104,
+        304
+      ],
+      "id": "90f7d1a2-c1b0-4ded-b2a8-6cdee6209216",
+      "name": "HTTP Request4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mJx2qian3IlJjQom",
+          "name": "Header Auth account 3"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a9d3ff34-8e95-4112-b4fe-27321fe31866",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "13d13930f2a61c91b9d8074c87a1514a01566d06d4943097fe13f3ffaa68c579"
+  },
+  "nodeGroups": [],
+  "id": "9hKGWXWH8btLiaUg",
+  "tags": []
+}
