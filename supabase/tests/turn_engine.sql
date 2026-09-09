@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(112);
+SELECT plan(116);
 
 SELECT lives_ok(
   $$
@@ -994,7 +994,10 @@ SELECT results_eq(
          (SELECT claim_token FROM public.task_steps
            WHERE id = '00000000-0000-4000-8000-000000000201'),
          'research-complete-v1',
-         '{"summary":"three options"}'::jsonb
+         '{"schema_version":"research.v1","summary":"three options",
+           "options":[{"key":"option-one","label":"Option one","summary":"Best fit."}],
+           "recommendation":{"option_key":"option-one","rationale":"Best fit for the request."},
+           "sources":[{"key":"source-one","title":"Primary source","url":"https://example.com/source"}]}'::jsonb
        ) $$,
   $$ VALUES ('completed'::text, 'three options'::text) $$,
   'the lease owner can complete a step'
@@ -1257,6 +1260,59 @@ SELECT is(
   (SELECT step_key FROM public.claim_task_step('planner-worker', 300, ARRAY['research.travel'])),
   'research-hotels',
   'only the first dependency-safe planned step is runnable'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.complete_task_step(
+    (SELECT id FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    (SELECT claim_token FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    'hotel-research-invalid-schema',
+    '{"summary":"Compared two hotels."}'::jsonb
+  ) $$,
+  '22023',
+  'research output schema_version must be research.v1',
+  'research completion rejects an unversioned result'
+);
+
+SELECT throws_ok(
+  $$ SELECT public.complete_task_step(
+    (SELECT id FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    (SELECT claim_token FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    'hotel-research-invalid-recommendation',
+    '{"schema_version":"research.v1","summary":"Compared two hotels.",
+      "options":[{"key":"langham","label":"Langham","summary":"Closer to the meeting."}],
+      "recommendation":{"option_key":"four-seasons","rationale":"Prefer loyalty."},
+      "sources":[{"key":"langham-site","title":"Langham New York","url":"https://example.com/langham"}]}'::jsonb
+  ) $$,
+  '22023',
+  'research recommendation must reference a declared option',
+  'research completion rejects a recommendation outside its option set'
+);
+
+SELECT results_eq(
+  $$ SELECT status, output->>'schema_version', output->'recommendation'->>'option_key'
+       FROM public.complete_task_step(
+         (SELECT id FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+         (SELECT claim_token FROM public.task_steps WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+         'hotel-research-complete-v1',
+         '{"schema_version":"research.v1","summary":"The Langham best fits the location preference.",
+           "options":[
+             {"key":"four-seasons","label":"Four Seasons","summary":"Strong loyalty benefits.","attributes":{"strength":"loyalty"}},
+             {"key":"langham","label":"Langham","summary":"Closer to the meeting.","attributes":{"strength":"location"}}
+           ],
+           "recommendation":{"option_key":"langham","rationale":"Location matters most for this trip."},
+           "sources":[{"key":"hotel-sites","title":"Official hotel sites","url":"https://example.com/hotels"}],
+           "constraints":{"city":"New York"},"caveats":[]}'::jsonb
+       ) $$,
+  $$ VALUES ('completed'::text, 'research.v1'::text, 'langham'::text) $$,
+  'a valid versioned research result completes the step'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_step_events
+    WHERE idempotency_key = 'hotel-research-complete-v1'),
+  1,
+  'accepted research output produces one durable completion event'
 );
 
 SELECT lives_ok(

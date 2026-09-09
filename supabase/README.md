@@ -183,6 +183,36 @@ returned to `ready`, or marked `failed` after its attempt budget is exhausted.
 The capability allowlist is applied before locking, so a worker cannot lease a
 step type for which it has no handler.
 
+`research.travel` completions use the provider-neutral `research.v1` contract:
+
+```json
+{
+  "schema_version": "research.v1",
+  "summary": "The Langham best fits the location preference.",
+  "options": [
+    {
+      "key": "langham",
+      "label": "Langham",
+      "summary": "Closest option to the meeting.",
+      "attributes": { "strength": "location" }
+    }
+  ],
+  "recommendation": {
+    "option_key": "langham",
+    "rationale": "Location is the controlling preference."
+  },
+  "sources": [
+    { "key": "langham-site", "title": "Langham New York", "url": "https://example.com/langham" }
+  ],
+  "constraints": { "city": "New York" },
+  "caveats": []
+}
+```
+
+Option and source keys must be unique, and the recommendation must reference a
+declared option. The database validates the contract before completing the step
+or unlocking its dependents.
+
 Task initiators, scoped authority grants, approvals, closure recipients, and
 provider-neutral memory references have dedicated tables. Repository paths are
 not embedded in the execution model.

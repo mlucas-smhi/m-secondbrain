@@ -169,6 +169,12 @@ lease, and attempt budget. A step is runnable only after all explicit
 prerequisites complete. The parent `tasks` row remains the goal-level summary;
 step outputs and events provide the execution detail.
 
+Research workers return the versioned `research.v1` envelope: a summary,
+normalized options, one recommendation tied to an option key, cited sources,
+and optional constraints and caveats. The completion transaction validates this
+contract before changing the step to `completed`, so malformed research cannot
+unlock a briefing, decision request, or execution step.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the
@@ -248,6 +254,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 112 assertions. Hosted transition
+The current database test suite contains 116 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

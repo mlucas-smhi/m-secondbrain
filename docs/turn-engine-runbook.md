@@ -66,6 +66,12 @@ The task layer claims executable steps rather than parent tasks:
 6. Reuse the same completion or failure idempotency key if the response is lost.
 7. Never claim another step inside the same workflow execution.
 
+For `research.travel`, complete the step only with a valid `research.v1`
+envelope. Preserve factual evidence in `sources`, use stable keys for options,
+and make `recommendation.option_key` reference one of those options. Provider
+responses may be retained inside option attributes when useful, but the durable
+contract must not depend on a provider-specific response shape.
+
 Dependencies are satisfied only by completed prerequisite steps. An expired
 lease is recovered on the next claim and consumes the existing attempt; the
 step is failed when its attempt budget is exhausted. A worker must not continue
