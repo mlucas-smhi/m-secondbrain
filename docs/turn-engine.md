@@ -256,6 +256,23 @@ Enable `post_call_transcription`; audio delivery is not required. A callback
 that represents an answer should use dynamic variable
 `trigger_type=user_response`; other values map to `external_event`.
 
+## Planned direct voice tool path
+
+Connect ElevenLabs to the provider-neutral, read-only travel MCP surface for
+questions that must be answered during the live conversation, such as “check
+flights to NYC for Saturday early in the morning.” Eleven should be able to
+search, compare, and answer before the call ends without first creating a task
+or waiting for the post-call webhook.
+
+Eleven should see canonical capabilities rather than provider-specific tool
+names. The adapter resolver may query Duffel, RouteStack, or a later replacement
+behind that contract. This live path remains read-only: holds, purchases,
+bookings, cancellations, and other external effects still require durable task
+steps, authority checks, approvals where applicable, idempotency, and protected
+offer references. If the live exchange creates follow-up work, an unresolved
+decision, or a commitment, Eleven must create a durable thread/task before the
+conversation ends.
+
 ## Task lifecycle
 
 ```text
