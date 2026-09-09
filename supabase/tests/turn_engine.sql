@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(124);
+SELECT plan(126);
 
 SELECT lives_ok(
   $$
@@ -1179,6 +1179,14 @@ SELECT lives_ok(
         {"step_key":"brief-owner","depends_on_step_key":"research-hotels"},
         {"step_key":"prepare-booking","depends_on_step_key":"brief-owner"}
       ],
+      "tool_requirements": [
+        {
+          "step_key":"research-hotels",
+          "capability":"travel.hotel.search",
+          "access_mode":"read",
+          "constraints":{"live_inventory":true}
+        }
+      ],
       "decisions": [{
         "key":"hotel-choice",
         "title":"Hotel for NYC",
@@ -1225,6 +1233,23 @@ SELECT is(
    WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
   2,
   'the plan creates explicit step dependencies'
+);
+
+SELECT is(
+  (SELECT count(*)::integer FROM public.task_step_tool_requirements
+   WHERE task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  1,
+  'the plan atomically creates its declared tool requirements'
+);
+
+SELECT is(
+  (SELECT requirement.capability
+     FROM public.task_step_tool_requirements AS requirement
+     JOIN public.task_steps AS step ON step.id = requirement.step_id
+    WHERE step.step_key = 'research-hotels'
+      AND step.task_id = (SELECT task_id FROM public.task_events WHERE call_id = 'hotel-plan-v1')),
+  'travel.hotel.search',
+  'the planned research step retains its provider-neutral capability'
 );
 
 SELECT is(
@@ -1461,18 +1486,16 @@ SELECT is(
 
 SELECT lives_ok(
   $$
-    INSERT INTO public.task_step_tool_requirements (
-      task_id, step_id, capability, access_mode, preferred_adapter_id,
-      constraints
-    )
-    SELECT step.task_id, step.id, 'travel.hotel.search', 'read', adapter.id,
-           '{"live_inventory":true}'::jsonb
+    UPDATE public.task_step_tool_requirements AS requirement
+       SET preferred_adapter_id = adapter.id
       FROM public.task_steps AS step
       CROSS JOIN public.tool_adapters AS adapter
-     WHERE step.idempotency_key = 'hotel-plan-v1:step:research-hotels'
+     WHERE requirement.step_id = step.id
+       AND step.idempotency_key = 'hotel-plan-v1:step:research-hotels'
+       AND requirement.capability = 'travel.hotel.search'
        AND adapter.adapter_key = 'travel-inventory-primary';
   $$,
-  'a research step declares a read-only travel capability requirement'
+  'a planned research requirement can bind to a configured adapter'
 );
 
 SELECT is(

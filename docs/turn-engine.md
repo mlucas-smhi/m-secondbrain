@@ -181,7 +181,10 @@ storing credentials. `task_step_tool_requirements` declares the exact capability
 and authority mode a step may use. `task_step_tool_runs` records bounded request
 metadata, external run IDs, evidence metadata, and an external result reference.
 OpenAI compares and explains this evidence; it is not treated as the inventory
-system of record.
+system of record. Atomic plans may include `tool_requirements`, keyed to their
+declared steps. Those requirements are validated and inserted in the same
+transaction as the thread, task, dependencies, and decision gates, and they are
+returned in replay-safe plan snapshots.
 
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
@@ -262,6 +265,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 124 assertions. Hosted transition
+The current database test suite contains 126 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

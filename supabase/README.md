@@ -220,6 +220,11 @@ runs retain idempotency and provenance while large raw provider responses remain
 behind provider-neutral external references. Adapter records contain credential
 references only—never API keys or MCP secrets.
 
+`create-task-plan` accepts a top-level `tool_requirements` array. Each item names
+an existing `step_key`, a capability, an authority `access_mode`, optional
+constraints, and an optional `preferred_adapter_key`. Omitting the preferred
+adapter keeps the plan portable; resolution can occur when the worker runs.
+
 Task initiators, scoped authority grants, approvals, closure recipients, and
 provider-neutral memory references have dedicated tables. Repository paths are
 not embedded in the execution model.
