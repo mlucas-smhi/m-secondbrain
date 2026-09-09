@@ -91,6 +91,14 @@ never authorizes a hold, reservation, purchase, cancellation, or message.
 OpenAI may rank and explain tool evidence, but it must not fabricate inventory
 or expand the step's declared tool authority.
 
+After claiming a step, call `begin-task-step-tool-run` with its `step_id`, active
+`claim_token`, declared capability, canonical operation, stable idempotency key,
+and a bounded `request_summary`. The response contains the durable tool-run ID
+and the currently selected adapter. Replaying the same input returns the same
+run; reusing the key with different input is rejected. Pass that run ID into the
+provider search as `tool_run_id`. Successful protected-result storage marks the
+tool run completed and returns only its opaque `tool-result:<uuid>` reference.
+
 Call `resolve_task_step_tool_adapter(step_id, capability)` immediately before a
 tool run. Do not branch on provider names in the task workflow. The returned
 adapter supplies transport/configuration and an external `credential_ref`;

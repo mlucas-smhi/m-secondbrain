@@ -116,6 +116,7 @@ Implemented endpoints:
 | `wake-task` | Resume a paused task from a user, external, or timer trigger. |
 | `create-task-plan` | Atomically create a thread, task, execution graph, decisions, and closure records. |
 | `claim-task-step` | Lease the next runnable dependency-safe work step. |
+| `begin-task-step-tool-run` | Resolve the configured adapter and replay-safely begin a claimed step's tool invocation. |
 | `complete-task-step` | Complete a step using its active claim token. |
 | `fail-task-step` | Record an error and requeue or terminally fail the claimed step. |
 | `resolve-task-decision` | Resolve a declared option and satisfy its gate atomically. |

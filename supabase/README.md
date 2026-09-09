@@ -183,6 +183,31 @@ returned to `ready`, or marked `failed` after its attempt budget is exhausted.
 The capability allowlist is applied before locking, so a worker cannot lease a
 step type for which it has no handler.
 
+Before invoking an external tool, begin a durable tool run through
+`functions/begin-task-step-tool-run`:
+
+```json
+{
+  "step_id": "00000000-0000-0000-0000-000000000000",
+  "claim_token": "00000000-0000-0000-0000-000000000000",
+  "capability": "travel.hotel.search",
+  "operation": "travel_hotel_search",
+  "idempotency_key": "n8n-tool-run:<stable-delivery-id>",
+  "request_summary": {
+    "destination": "New York",
+    "check_in": "2026-10-14",
+    "check_out": "2026-10-16"
+  }
+}
+```
+
+The endpoint verifies the active step lease, rejects undeclared capabilities,
+resolves the current provider adapter, and returns a durable `tool_run.id`.
+Pass that ID to the selected travel MCP call as `tool_run_id`. The successful
+search returns an opaque `tool-result:<uuid>` reference and atomically marks the
+tool run completed. The same idempotency key and request replay the same run;
+changing the input under that key is rejected.
+
 `research.travel` completions use the provider-neutral `research.v1` contract:
 
 ```json

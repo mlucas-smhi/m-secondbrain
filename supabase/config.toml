@@ -441,6 +441,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/claim-task-step/index.ts"
 
+[functions.begin-task-step-tool-run]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/begin-task-step-tool-run/index.ts"
+
 [functions.complete-task-step]
 enabled = true
 verify_jwt = false
