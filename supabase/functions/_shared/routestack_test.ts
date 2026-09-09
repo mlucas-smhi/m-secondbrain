@@ -2,6 +2,8 @@ import { assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
   boundedRouteStackPayload,
   routeStackFlightSearchPayload,
+  routeStackHotelSearchPayload,
+  routeStackCarSearchPayload,
   routeStackPartnerSignature,
 } from "./routestack.ts";
 
@@ -65,10 +67,40 @@ Deno.test("RouteStack payload bounding strips provider secrets recursively", () 
       token: "session-secret",
       client_key: "provider-key",
       fareSourceCode: "opaque-booking-token",
+      fareCode: "opaque-car-booking-token",
+      correlationId: "opaque-search-session",
       fare: "public-fare",
     },
   }), {
     success: true,
     result: { fare: "public-fare" },
   });
+});
+
+Deno.test("maps canonical hotel search to RouteStack", () => {
+  assertEquals(routeStackHotelSearchPayload({
+    destination_id: "nyc",
+    latitude: 40.7128,
+    longitude: -74.006,
+    check_in_date: "2026-10-14",
+    check_out_date: "2026-10-16",
+    rooms: [{ adults: 1 }],
+  }), {
+    destinationId: "nyc", destinationType: "DESTINATION",
+    lat: 40.7128, long: -74.006,
+    checkIn: "2026-10-14", checkOut: "2026-10-16",
+    roomCount: 1, rooms: [{ adults: 1, children: 0, childAges: [] }],
+    currency: "USD", page: 1, limit: 12,
+  });
+});
+
+Deno.test("maps canonical car search to RouteStack", () => {
+  assertEquals(routeStackCarSearchPayload({
+    pickup: { code: "HOU" }, pickup_date: "2026-10-14", pickup_time: "10:00",
+    dropoff_date: "2026-10-16", dropoff_time: "10:00",
+  }), { filter: {
+    pickup: { code: "HOU", name: "HOU", date: "2026-10-14", time: "10:00" },
+    dropoff: { code: "HOU", name: "HOU", date: "2026-10-16", time: "10:00" },
+    sortBy: {}, findData: {}, page: 1, limit: 12,
+  } });
 });

@@ -199,10 +199,13 @@ adapter pins a step when truly required; otherwise disabling one adapter causes
 the next active provider for that capability to be selected without changing
 the task, graph, or n8n routing contract.
 
-RouteStack is implemented as a second flight-discovery adapter. Its sandbox
+RouteStack is implemented as a second travel-discovery adapter. Its sandbox
 partner key and secret remain in Supabase; the adapter performs HMAC token
-exchange and JWT renewal internally. It presents the same canonical flight
-tool names as Duffel and intentionally omits RouteStack's checkout, order,
+exchange and JWT renewal internally. It presents canonical flight, hotel, and
+car location/search tools. Hotel and car results are currently bounded
+provider packets used to evaluate the sandbox; they must be normalized and
+stored behind protected result references before they may unlock approval or
+execution steps. The adapter intentionally omits RouteStack's checkout, order,
 booking, payment, revalidation, and cancellation surface.
 
 Both flight adapters return `travel.flight_search.v1`: a bounded list of

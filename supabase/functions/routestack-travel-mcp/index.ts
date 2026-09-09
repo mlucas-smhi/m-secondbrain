@@ -4,6 +4,8 @@ import {
   boundedRouteStackPayload,
   callRouteStack,
   routeStackFlightSearchPayload,
+  routeStackHotelSearchPayload,
+  routeStackCarSearchPayload,
 } from "../_shared/routestack.ts";
 import {
   normalizeRouteStackFlightResults,
@@ -21,6 +23,10 @@ const passengerSchema = z.union([
   z.object({ type: z.literal("adult") }),
   z.object({ age: z.number().int().min(0).max(17) }),
 ]);
+const carLocationSchema = z.object({
+  code: z.string().trim().min(2).max(20),
+  name: z.string().trim().min(1).max(200).optional(),
+});
 
 function result(payload: unknown) {
   const structuredContent = {
@@ -83,6 +89,90 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
         input.tool_run_id, "routestack", normalized, protectedRouteStackOfferRefs(payload),
       );
       return result({ ...normalized, result_ref: resultRef });
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  server.registerTool("travel_hotel_place_suggest", {
+    title: "Suggest hotel destinations",
+    description: "Resolve destination text to RouteStack destination IDs and coordinates.",
+    inputSchema: z.object({ query: z.string().trim().min(2).max(200) }),
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  }, async ({ query }) => {
+    try {
+      return result(await callRouteStack(
+        baseUrl, apiKey, apiSecret, "/mcp/hotel/search-destinations", { query, type: "DESTINATION" },
+      ));
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  server.registerTool("travel_hotel_search", {
+    title: "Search live hotel inventory",
+    description: "Search hotels without viewing rates, revalidating, holding, paying, or booking.",
+    inputSchema: z.object({
+      destination_id: z.string().trim().min(1).max(200),
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      check_in_date: z.iso.date(),
+      check_out_date: z.iso.date(),
+      rooms: z.array(z.object({
+        adults: z.number().int().min(1).max(8),
+        child_ages: z.array(z.number().int().min(0).max(17)).max(6).optional(),
+      })).min(1).max(8),
+      currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).optional(),
+      limit: z.number().int().min(1).max(20).optional(),
+    }).refine((value) => value.check_out_date > value.check_in_date, {
+      message: "check_out_date must be after check_in_date",
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  }, async (input) => {
+    try {
+      return result(await callRouteStack(
+        baseUrl, apiKey, apiSecret, "/mcp/hotel/search-hotels", routeStackHotelSearchPayload(input),
+      ));
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  server.registerTool("travel_car_place_suggest", {
+    title: "Suggest car rental locations",
+    description: "Resolve airport or city text to RouteStack car rental location codes.",
+    inputSchema: z.object({ query: z.string().trim().min(2).max(200) }),
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  }, async ({ query }) => {
+    try {
+      return result(await callRouteStack(
+        baseUrl, apiKey, apiSecret, "/mcp/car/locations", { term: query },
+      ));
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  server.registerTool("travel_car_search", {
+    title: "Search live car rental inventory",
+    description: "Search rental cars without revalidating, holding, paying, ordering, or booking.",
+    inputSchema: z.object({
+      pickup: carLocationSchema,
+      dropoff: carLocationSchema.optional(),
+      pickup_date: z.iso.date(),
+      pickup_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+      dropoff_date: z.iso.date(),
+      dropoff_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+      limit: z.number().int().min(1).max(20).optional(),
+    }).refine((value) => `${value.dropoff_date}T${value.dropoff_time}` > `${value.pickup_date}T${value.pickup_time}`, {
+      message: "dropoff must be after pickup",
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  }, async (input) => {
+    try {
+      return result(await callRouteStack(
+        baseUrl, apiKey, apiSecret, "/mcp/car/search", routeStackCarSearchPayload(input),
+      ));
     } catch (error) {
       return failure(error);
     }

@@ -377,12 +377,15 @@ hotel suggestions/search/details/rates and flight place suggestions/search/
 offer details. Every tool is commercially read-only and idempotent; quote,
 hold, order, booking, cancellation, and payment operations are absent.
 
-`functions/routestack-travel-mcp` is a second implementation of the canonical
-flight discovery contract. It exchanges the configured RouteStack sandbox key
+`functions/routestack-travel-mcp` is a second travel discovery adapter. It
+exchanges the configured RouteStack sandbox key
 and secret for a short-lived partner JWT inside Supabase, renews before expiry,
 and retries authentication once after a 401. n8n receives neither partner
-credential. Revalidation, checkout, order, booking, payment, and cancellation
-operations are not exposed.
+credential. It exposes flight, hotel, and car location/search operations only.
+Hotel and car packets are currently bounded discovery output; do not use them
+to unlock approval or execution until canonical validation and protected result
+references are added. Revalidation, checkout, order, booking, payment, and
+cancellation operations are not exposed.
 
 Flight search returns the validated `travel.flight_search.v1` contract. Pass a
 current `task_step_tool_runs.id` as `tool_run_id` in production worker calls;

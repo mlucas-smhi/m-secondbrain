@@ -7,6 +7,71 @@ export type CanonicalFlightSearchInput = {
   max_connections?: number;
 };
 
+export type RouteStackHotelSearchInput = {
+  destination_id: string;
+  latitude: number;
+  longitude: number;
+  check_in_date: string;
+  check_out_date: string;
+  rooms: Array<{ adults: number; child_ages?: number[] }>;
+  currency?: string;
+  limit?: number;
+};
+
+export type RouteStackCarSearchInput = {
+  pickup: { code: string; name?: string };
+  dropoff?: { code: string; name?: string };
+  pickup_date: string;
+  pickup_time: string;
+  dropoff_date: string;
+  dropoff_time: string;
+  limit?: number;
+};
+
+export function routeStackHotelSearchPayload(input: RouteStackHotelSearchInput): Record<string, unknown> {
+  return {
+    destinationId: input.destination_id,
+    destinationType: "DESTINATION",
+    lat: input.latitude,
+    long: input.longitude,
+    checkIn: input.check_in_date,
+    checkOut: input.check_out_date,
+    roomCount: input.rooms.length,
+    rooms: input.rooms.map((room) => ({
+      adults: room.adults,
+      children: room.child_ages?.length ?? 0,
+      childAges: room.child_ages ?? [],
+    })),
+    currency: input.currency ?? "USD",
+    page: 1,
+    limit: input.limit ?? 12,
+  };
+}
+
+export function routeStackCarSearchPayload(input: RouteStackCarSearchInput): Record<string, unknown> {
+  const dropoff = input.dropoff ?? input.pickup;
+  return {
+    filter: {
+      pickup: {
+        code: input.pickup.code,
+        name: input.pickup.name ?? input.pickup.code,
+        date: input.pickup_date,
+        time: input.pickup_time,
+      },
+      dropoff: {
+        code: dropoff.code,
+        name: dropoff.name ?? dropoff.code,
+        date: input.dropoff_date,
+        time: input.dropoff_time,
+      },
+      sortBy: {},
+      findData: {},
+      page: 1,
+      limit: input.limit ?? 12,
+    },
+  };
+}
+
 type CachedToken = { value: string; refreshAt: number };
 let cachedToken: CachedToken | null = null;
 
@@ -142,7 +207,7 @@ export async function callRouteStack(
 }
 
 export function boundedRouteStackPayload(payload: unknown, maxItems = 20): unknown {
-  const sensitiveKey = /(^|_)(token|secret|client_key|authorization|hmac)($|_)|faresourcecode/i;
+  const sensitiveKey = /(^|_)(token|secret|client_key|authorization|hmac)($|_)|faresourcecode|farecode|correlationid/i;
   function bound(value: unknown, depth: number): unknown {
     if (depth > 10) return "[truncated]";
     if (typeof value === "string") return value.length > 2_000 ? `${value.slice(0, 2_000)}…` : value;
