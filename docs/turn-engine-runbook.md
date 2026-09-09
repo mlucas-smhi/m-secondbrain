@@ -98,6 +98,10 @@ and the currently selected adapter. Replaying the same input returns the same
 run; reusing the key with different input is rejected. Pass that run ID into the
 provider search as `tool_run_id`. Successful protected-result storage marks the
 tool run completed and returns only its opaque `tool-result:<uuid>` reference.
+If a replayed begin call returns a completed run, call
+`read-task-step-tool-result` with the active claim and its `result_ref`; never
+repeat the provider search. The read endpoint returns canonical evidence only,
+marks expired results explicitly, and never returns protected provider handles.
 
 Call `resolve_task_step_tool_adapter(step_id, capability)` immediately before a
 tool run. Do not branch on provider names in the task workflow. The returned

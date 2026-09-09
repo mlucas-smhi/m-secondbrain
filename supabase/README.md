@@ -208,6 +208,12 @@ search returns an opaque `tool-result:<uuid>` reference and atomically marks the
 tool run completed. The same idempotency key and request replay the same run;
 changing the input under that key is rejected.
 
+When a replayed begin call returns a completed run, call
+`functions/read-task-step-tool-result` with the active `step_id`, `claim_token`,
+and returned `result_ref`. It returns only the safe canonical packet plus an
+explicit expiry flag. It never returns provider handles. A worker must re-search
+an expired result rather than using it to unlock an execution step.
+
 `research.travel` completions use the provider-neutral `research.v1` contract:
 
 ```json

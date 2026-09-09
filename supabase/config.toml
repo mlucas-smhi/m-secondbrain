@@ -446,6 +446,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/begin-task-step-tool-run/index.ts"
 
+[functions.read-task-step-tool-result]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/read-task-step-tool-result/index.ts"
+
 [functions.complete-task-step]
 enabled = true
 verify_jwt = false
