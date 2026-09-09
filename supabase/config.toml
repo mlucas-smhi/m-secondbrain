@@ -456,6 +456,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/resolve-task-decision/index.ts"
 
+[functions.duffel-travel-mcp]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/duffel-travel-mcp/index.ts"
+
 [functions.complete-dispatch]
 enabled = true
 verify_jwt = false

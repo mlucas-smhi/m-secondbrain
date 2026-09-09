@@ -365,6 +365,18 @@ an `error` and `delay_seconds` between 1 and 3600.
 Attempts are capped at `max_attempts` (1–10). The next claim recovers an
 abandoned lease; exhausted work becomes `failed` instead of looping.
 
+## Read-only Duffel MCP adapter
+
+`functions/duffel-travel-mcp` is a stateless MCP v2 Streamable HTTP endpoint
+for Duffel Stays. It exposes hotel suggestions, live searches, accommodation
+details, and rate retrieval. Every tool is marked read-only and idempotent;
+quote, hold, booking, cancellation, and payment operations are absent.
+
+Set `DUFFEL_ACCESS_TOKEN`, a separate `TRAVEL_MCP_API_KEY`, and an allowlist in
+`TRAVEL_MCP_ALLOWED_ORIGINS`. MCP clients authenticate with the latter as a
+Bearer token. Provider results are timestamped and bounded before returning to
+the client. Never commit either secret.
+
 ## ElevenLabs post-call delivery
 
 `elevenlabs-post-call` receives a `post_call_transcription` webhook after call

@@ -186,6 +186,11 @@ declared steps. Those requirements are validated and inserted in the same
 transaction as the thread, task, dependencies, and decision gates, and they are
 returned in replay-safe plan snapshots.
 
+The first adapter implementation is a stateless MCP v2 Streamable HTTP server
+over Duffel Stays. Its tool surface is read-only: hotel-name suggestions, live
+inventory search, accommodation details, and room-rate retrieval. It has no
+quote, hold, booking, cancellation, payment, or messaging capability.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the
