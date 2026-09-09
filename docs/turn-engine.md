@@ -175,6 +175,14 @@ and optional constraints and caveats. The completion transaction validates this
 contract before changing the step to `completed`, so malformed research cannot
 unlock a briefing, decision request, or execution step.
 
+Research evidence comes from a provider-neutral tool layer. `tool_adapters`
+register configured MCP, API, native, or browser adapters by capability without
+storing credentials. `task_step_tool_requirements` declares the exact capability
+and authority mode a step may use. `task_step_tool_runs` records bounded request
+metadata, external run IDs, evidence metadata, and an external result reference.
+OpenAI compares and explains this evidence; it is not treated as the inventory
+system of record.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the
@@ -254,6 +262,6 @@ With the local Supabase stack running:
 supabase test db supabase/tests/turn_engine.sql
 ```
 
-The current database test suite contains 116 assertions. Hosted transition
+The current database test suite contains 124 assertions. Hosted transition
 access is restored only to `service_role`; follow the operations runbook for
 hosted canaries.

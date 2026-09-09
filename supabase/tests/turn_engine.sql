@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(116);
+SELECT plan(124);
 
 SELECT lives_ok(
   $$
@@ -1427,6 +1427,103 @@ SELECT is(
     WHERE task_id = '00000000-0000-4000-8000-000000000110'),
   'memory-service',
   'task memory references are not coupled to GitHub'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.tool_adapters (
+      workspace_id, adapter_key, provider, transport, capabilities,
+      credential_ref, configuration
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000001',
+      'travel-inventory-primary', 'future-travel-provider', 'mcp',
+      ARRAY['travel.hotel.search', 'travel.hotel.details'],
+      'secret-manager:n8n/travel-inventory',
+      '{"region":"global"}'::jsonb
+    );
+  $$,
+  'a workspace can register an MCP adapter without storing its secret'
+);
+
+SELECT is(
+  (SELECT transport FROM public.tool_adapters
+    WHERE adapter_key = 'travel-inventory-primary'),
+  'mcp',
+  'an adapter records its replaceable transport'
+);
+
+SELECT is(
+  (SELECT credential_ref FROM public.tool_adapters
+    WHERE adapter_key = 'travel-inventory-primary'),
+  'secret-manager:n8n/travel-inventory',
+  'an adapter stores only an external credential reference'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.task_step_tool_requirements (
+      task_id, step_id, capability, access_mode, preferred_adapter_id,
+      constraints
+    )
+    SELECT step.task_id, step.id, 'travel.hotel.search', 'read', adapter.id,
+           '{"live_inventory":true}'::jsonb
+      FROM public.task_steps AS step
+      CROSS JOIN public.tool_adapters AS adapter
+     WHERE step.idempotency_key = 'hotel-plan-v1:step:research-hotels'
+       AND adapter.adapter_key = 'travel-inventory-primary';
+  $$,
+  'a research step declares a read-only travel capability requirement'
+);
+
+SELECT is(
+  (SELECT access_mode FROM public.task_step_tool_requirements AS requirement
+    JOIN public.task_steps AS step ON step.id = requirement.step_id
+   WHERE step.idempotency_key = 'hotel-plan-v1:step:research-hotels'
+     AND requirement.capability = 'travel.hotel.search'),
+  'read',
+  'research cannot silently inherit booking authority'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.task_step_tool_runs (
+      task_id, step_id, adapter_id, capability, operation, status,
+      idempotency_key, external_run_id, request_summary, result_ref,
+      evidence, completed_at
+    )
+    SELECT step.task_id, step.id, adapter.id, 'travel.hotel.search',
+           'search New York hotels', 'completed', 'hotel-search-run-v1',
+           'provider-run-123', '{"city":"New York","hotel_count":2}'::jsonb,
+           'object-store:research/provider-run-123',
+           '{"result_count":2,"retrieved_at":"2026-09-08T23:30:00Z"}'::jsonb,
+           now()
+      FROM public.task_steps AS step
+      CROSS JOIN public.tool_adapters AS adapter
+     WHERE step.idempotency_key = 'hotel-plan-v1:step:research-hotels'
+       AND adapter.adapter_key = 'travel-inventory-primary';
+  $$,
+  'a tool call records bounded provenance while raw results live externally'
+);
+
+SELECT is(
+  (SELECT result_ref FROM public.task_step_tool_runs
+    WHERE idempotency_key = 'hotel-search-run-v1'),
+  'object-store:research/provider-run-123',
+  'large provider results use a provider-neutral external reference'
+);
+
+SELECT throws_ok(
+  $$
+    INSERT INTO public.task_step_tool_requirements (
+      task_id, step_id, capability, access_mode
+    )
+    SELECT task_id, id, 'travel.hotel.book', 'purchase'
+      FROM public.task_steps
+     WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'
+  $$,
+  '23514',
+  NULL,
+  'unsupported authority modes are rejected by the durable tool layer'
 );
 
 SELECT * FROM finish();

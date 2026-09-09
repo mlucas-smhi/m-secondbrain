@@ -78,6 +78,19 @@ step is failed when its attempt budget is exhausted. A worker must not continue
 after its lease expires, and external effects must still go through the durable
 dispatch outbox.
 
+## Tool adapter rules
+
+Research workers resolve declared capabilities through active `tool_adapters`.
+Prefer structured MCP or API inventory over open-web discovery. Keep credentials
+in n8n or a secret manager; database adapter rows contain only `credential_ref`.
+
+Every tool invocation must create a `task_step_tool_runs` record with a stable
+idempotency key. Store bounded request/evidence metadata in Postgres and put
+large or provider-specific payloads behind `result_ref`. A `read` requirement
+never authorizes a hold, reservation, purchase, cancellation, or message.
+OpenAI may rank and explain tool evidence, but it must not fabricate inventory
+or expand the step's declared tool authority.
+
 ## Caller identification
 
 Postgres sees PostgREST as an internal connection, so `pg_stat_activity` alone

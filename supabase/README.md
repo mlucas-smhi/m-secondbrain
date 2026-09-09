@@ -213,6 +213,13 @@ Option and source keys must be unique, and the recommendation must reference a
 declared option. The database validates the contract before completing the step
 or unlocking its dependents.
 
+Travel inventory and other external evidence are accessed through replaceable
+`tool_adapters`. Steps declare capability requirements such as
+`travel.hotel.search` with an explicit `read`, `hold`, or `execute` mode. Tool
+runs retain idempotency and provenance while large raw provider responses remain
+behind provider-neutral external references. Adapter records contain credential
+references only—never API keys or MCP secrets.
+
 Task initiators, scoped authority grants, approvals, closure recipients, and
 provider-neutral memory references have dedicated tables. Repository paths are
 not embedded in the execution model.
