@@ -377,6 +377,13 @@ hotel suggestions/search/details/rates and flight place suggestions/search/
 offer details. Every tool is commercially read-only and idempotent; quote,
 hold, order, booking, cancellation, and payment operations are absent.
 
+`functions/routestack-travel-mcp` is a second implementation of the canonical
+flight discovery contract. It exchanges the configured RouteStack sandbox key
+and secret for a short-lived partner JWT inside Supabase, renews before expiry,
+and retries authentication once after a 401. n8n receives neither partner
+credential. Revalidation, checkout, order, booking, payment, and cancellation
+operations are not exposed.
+
 Set `DUFFEL_ACCESS_TOKEN`, a separate `TRAVEL_MCP_API_KEY`, and an allowlist in
 `TRAVEL_MCP_ALLOWED_ORIGINS`. MCP clients authenticate with the latter as a
 Bearer token. Provider results are timestamped and bounded before returning to

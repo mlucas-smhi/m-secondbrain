@@ -199,6 +199,12 @@ adapter pins a step when truly required; otherwise disabling one adapter causes
 the next active provider for that capability to be selected without changing
 the task, graph, or n8n routing contract.
 
+RouteStack is implemented as a second flight-discovery adapter. Its sandbox
+partner key and secret remain in Supabase; the adapter performs HMAC token
+exchange and JWT renewal internally. It presents the same canonical flight
+tool names as Duffel and intentionally omits RouteStack's checkout, order,
+booking, payment, revalidation, and cancellation surface.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the
