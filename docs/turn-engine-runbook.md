@@ -91,9 +91,18 @@ never authorizes a hold, reservation, purchase, cancellation, or message.
 OpenAI may rank and explain tool evidence, but it must not fabricate inventory
 or expand the step's declared tool authority.
 
+Call `resolve_task_step_tool_adapter(step_id, capability)` immediately before a
+tool run. Do not branch on provider names in the task workflow. The returned
+adapter supplies transport/configuration and an external `credential_ref`;
+provider adapters must implement the same canonical operation names and input
+contracts. Use `selection_priority` to choose the default. Disable a degraded
+provider to fail over new resolutions; use `preferred_adapter_id` only when a
+task has a genuine provider constraint.
+
 The initial travel adapter is `functions/duffel-travel-mcp`, a stateless MCP v2
-Streamable HTTP server. It exposes only read-only hotel suggestion, search,
-details, and rate tools. Configure these Edge Function secrets before deploy:
+Streamable HTTP server. It exposes canonical, read-only hotel and flight
+discovery tools. Flight search creates Duffel offer-request search records but
+cannot create an order or payment. Configure these Edge Function secrets before deploy:
 
 ```text
 DUFFEL_ACCESS_TOKEN=<Duffel test or live access token>
@@ -107,8 +116,8 @@ The n8n MCP client sends `Authorization: Bearer <TRAVEL_MCP_API_KEY>` to:
 https://apozwrkkomowdaocwfmm.supabase.co/functions/v1/duffel-travel-mcp
 ```
 
-Do not reuse the Duffel token as the MCP client key. Quote creation and booking
-are intentionally not exposed by this server.
+Do not reuse the Duffel token as the MCP client key. Quote, hold, order,
+booking, cancellation, and payment operations are intentionally not exposed.
 
 ## Caller identification
 

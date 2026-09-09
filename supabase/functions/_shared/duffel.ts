@@ -7,6 +7,35 @@ export type DuffelRequestOptions = {
   signal?: AbortSignal;
 };
 
+export type FlightSearchInput = {
+  slices: Array<{
+    origin: string;
+    destination: string;
+    departure_date: string;
+  }>;
+  passengers: Array<{ type: "adult" } | { age: number }>;
+  cabin_class?: "economy" | "premium_economy" | "business" | "first";
+  max_connections?: number;
+};
+
+export function duffelPlaceSuggestionsPath(query: string): string {
+  return `/places/suggestions?query=${encodeURIComponent(query)}`;
+}
+
+export function duffelFlightSearchRequest(input: FlightSearchInput): {
+  path: string;
+  data: FlightSearchInput;
+} {
+  return {
+    path: "/air/offer_requests?return_offers=true",
+    data: input,
+  };
+}
+
+export function duffelFlightOfferPath(offerId: string): string {
+  return `/air/offers/${encodeURIComponent(offerId)}`;
+}
+
 export async function callDuffel(
   accessToken: string,
   path: string,

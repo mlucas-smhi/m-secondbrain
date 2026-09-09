@@ -187,9 +187,17 @@ transaction as the thread, task, dependencies, and decision gates, and they are
 returned in replay-safe plan snapshots.
 
 The first adapter implementation is a stateless MCP v2 Streamable HTTP server
-over Duffel Stays. Its tool surface is read-only: hotel-name suggestions, live
-inventory search, accommodation details, and room-rate retrieval. It has no
-quote, hold, booking, cancellation, payment, or messaging capability.
+over Duffel. Its tool names and inputs are canonical travel operations rather
+than provider-specific contracts. It exposes read-only hotel discovery plus
+flight place suggestion, flight search, and offer refresh. It has no quote,
+hold, order, booking, cancellation, payment, or messaging capability.
+
+Workers resolve a step's declared capability with
+`resolve_task_step_tool_adapter`. Resolution is scoped to the task workspace,
+requires an active adapter, and uses explicit selection priority. A preferred
+adapter pins a step when truly required; otherwise disabling one adapter causes
+the next active provider for that capability to be selected without changing
+the task, graph, or n8n routing contract.
 
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through

@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(126);
+SELECT plan(131);
 
 SELECT lives_ok(
   $$
@@ -1533,6 +1533,76 @@ SELECT is(
     WHERE idempotency_key = 'hotel-search-run-v1'),
   'object-store:research/provider-run-123',
   'large provider results use a provider-neutral external reference'
+);
+
+SELECT lives_ok(
+  $$
+    UPDATE public.tool_adapters
+       SET capabilities = capabilities || ARRAY['travel.flight.search'],
+           selection_priority = 100
+     WHERE adapter_key = 'travel-inventory-primary';
+
+    INSERT INTO public.tool_adapters (
+      workspace_id, adapter_key, provider, transport, capabilities,
+      credential_ref, configuration, selection_priority
+    ) VALUES (
+      '00000000-0000-4000-8000-000000000001',
+      'travel-inventory-secondary', 'alternate-travel-provider', 'mcp',
+      ARRAY['travel.flight.search'],
+      'secret-manager:n8n/travel-inventory-secondary',
+      '{"endpoint_ref":"n8n:travel-secondary"}'::jsonb, 10
+    );
+
+    INSERT INTO public.task_step_tool_requirements (
+      task_id, step_id, capability, access_mode
+    )
+    SELECT task_id, id, 'travel.flight.search', 'read'
+      FROM public.task_steps
+     WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels';
+  $$,
+  'a step can request a flight capability without naming its provider'
+);
+
+SELECT is(
+  (SELECT adapter_key FROM public.resolve_task_step_tool_adapter(
+    (SELECT id FROM public.task_steps
+      WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    'travel.flight.search'
+  )),
+  'travel-inventory-secondary',
+  'runtime resolution selects the active adapter with the lowest priority number'
+);
+
+SELECT lives_ok(
+  $$
+    UPDATE public.tool_adapters
+       SET status = 'disabled'
+     WHERE adapter_key = 'travel-inventory-secondary';
+  $$,
+  'an adapter can be disabled without changing the task graph'
+);
+
+SELECT is(
+  (SELECT adapter_key FROM public.resolve_task_step_tool_adapter(
+    (SELECT id FROM public.task_steps
+      WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+    'travel.flight.search'
+  )),
+  'travel-inventory-primary',
+  'runtime resolution fails over to another active capability provider'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT public.resolve_task_step_tool_adapter(
+      (SELECT id FROM public.task_steps
+        WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
+      'travel.car.search'
+    )
+  $$,
+  'P0002',
+  'tool requirement not found',
+  'workers cannot invoke undeclared capabilities'
 );
 
 SELECT throws_ok(

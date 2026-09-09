@@ -224,6 +224,10 @@ references only—never API keys or MCP secrets.
 an existing `step_key`, a capability, an authority `access_mode`, optional
 constraints, and an optional `preferred_adapter_key`. Omitting the preferred
 adapter keeps the plan portable; resolution can occur when the worker runs.
+Call `resolve_task_step_tool_adapter(step_id, capability)` at execution time;
+the task and worker route on canonical capabilities, not provider names. Active
+adapters are selected by `selection_priority`, and disabling one allows another
+adapter with the same capability to take over without editing the task graph.
 
 Task initiators, scoped authority grants, approvals, closure recipients, and
 provider-neutral memory references have dedicated tables. Repository paths are
@@ -368,9 +372,10 @@ abandoned lease; exhausted work becomes `failed` instead of looping.
 ## Read-only Duffel MCP adapter
 
 `functions/duffel-travel-mcp` is a stateless MCP v2 Streamable HTTP endpoint
-for Duffel Stays. It exposes hotel suggestions, live searches, accommodation
-details, and rate retrieval. Every tool is marked read-only and idempotent;
-quote, hold, booking, cancellation, and payment operations are absent.
+implementing canonical travel-discovery operations over Duffel. It exposes
+hotel suggestions/search/details/rates and flight place suggestions/search/
+offer details. Every tool is commercially read-only and idempotent; quote,
+hold, order, booking, cancellation, and payment operations are absent.
 
 Set `DUFFEL_ACCESS_TOKEN`, a separate `TRAVEL_MCP_API_KEY`, and an allowlist in
 `TRAVEL_MCP_ALLOWED_ORIGINS`. MCP clients authenticate with the latter as a

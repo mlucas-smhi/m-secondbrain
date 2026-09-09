@@ -1,6 +1,12 @@
 import { createMcpHandler, McpServer } from "npm:@modelcontextprotocol/server@2.0.0";
 import * as z from "npm:zod@4.5.4";
-import { boundedProviderPayload, callDuffel } from "../_shared/duffel.ts";
+import {
+  boundedProviderPayload,
+  callDuffel,
+  duffelFlightOfferPath,
+  duffelFlightSearchRequest,
+  duffelPlaceSuggestionsPath,
+} from "../_shared/duffel.ts";
 
 const SERVER_NAME = "eleven-duffel-travel";
 const SERVER_VERSION = "0.1.0";
@@ -18,6 +24,17 @@ const locationSchema = z.object({
 const guestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("adult") }),
   z.object({ type: z.literal("child"), age: z.number().int().min(0).max(17) }),
+]);
+
+const flightSliceSchema = z.object({
+  origin: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
+  destination: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
+  departure_date: z.iso.date(),
+});
+
+const flightPassengerSchema = z.union([
+  z.object({ type: z.literal("adult") }),
+  z.object({ age: z.number().int().min(0).max(17) }),
 ]);
 
 function toolResult(payload: unknown) {
@@ -42,6 +59,68 @@ function errorResult(error: unknown) {
 
 function buildServer(accessToken: string): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+
+  // These operation names and inputs are the provider-neutral contract. A
+  // replacement adapter must expose the same surface and translate internally.
+  server.registerTool(
+    "travel_flight_place_suggest",
+    {
+      title: "Suggest flight origins and destinations",
+      description: "Resolve city, airport, or IATA text to canonical flight places.",
+      inputSchema: z.object({ query: z.string().trim().min(2).max(200) }),
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+    },
+    async ({ query }) => {
+      try {
+        return toolResult(await callDuffel(accessToken, duffelPlaceSuggestionsPath(query)));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "travel_flight_search",
+    {
+      title: "Search live flight inventory",
+      description: "Search flight offers without holding, ordering, paying for, or changing travel.",
+      inputSchema: z.object({
+        slices: z.array(flightSliceSchema).min(1).max(6),
+        passengers: z.array(flightPassengerSchema).min(1).max(9),
+        cabin_class: z.enum(["economy", "premium_economy", "business", "first"]).optional(),
+        max_connections: z.number().int().min(0).max(3).optional(),
+      }),
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+    },
+    async (input) => {
+      try {
+        const request = duffelFlightSearchRequest(input);
+        return toolResult(await callDuffel(accessToken, request.path, {
+          method: "POST",
+          data: request.data,
+        }));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "travel_flight_offer_details",
+    {
+      title: "Get current flight offer details",
+      description: "Refresh price, expiry, itinerary, and conditions for one flight offer.",
+      inputSchema: z.object({ offer_id: z.string().trim().min(1).max(200) }),
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+    },
+    async ({ offer_id }) => {
+      try {
+        return toolResult(await callDuffel(accessToken, duffelFlightOfferPath(offer_id)));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
 
   server.registerTool(
     "travel_hotel_suggest",
