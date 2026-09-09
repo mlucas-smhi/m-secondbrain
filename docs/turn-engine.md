@@ -205,6 +205,13 @@ exchange and JWT renewal internally. It presents the same canonical flight
 tool names as Duffel and intentionally omits RouteStack's checkout, order,
 booking, payment, revalidation, and cancellation surface.
 
+Both flight adapters return `travel.flight_search.v1`: a bounded list of
+offers with normalized price, duration, stops, seat availability, fare brand,
+and flight segments. Raw provider responses, credentials, and opaque booking
+tokens are excluded from the worker-facing result. Provider-specific execution
+references belong in protected tool-run storage when transactional operations
+are added later.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the

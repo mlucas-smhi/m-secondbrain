@@ -99,6 +99,11 @@ contracts. Use `selection_priority` to choose the default. Disable a degraded
 provider to fail over new resolutions; use `preferred_adapter_id` only when a
 task has a genuine provider constraint.
 
+Flight search results must conform to `travel.flight_search.v1`. Do not pass
+raw inventory payloads, provider credentials, fare-source codes, or other
+opaque booking tokens to an LLM or general n8n branch. Persist transactional
+references separately when a later approved execution flow needs them.
+
 The initial travel adapter is `functions/duffel-travel-mcp`, a stateless MCP v2
 Streamable HTTP server. It exposes canonical, read-only hotel and flight
 discovery tools. Flight search creates Duffel offer-request search records but

@@ -5,6 +5,7 @@ import {
   callRouteStack,
   routeStackFlightSearchPayload,
 } from "../_shared/routestack.ts";
+import { normalizeRouteStackFlightResults } from "../_shared/flight-results.ts";
 
 const flightSliceSchema = z.object({
   origin: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
@@ -63,13 +64,13 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   }, async (input) => {
     try {
-      return result(await callRouteStack(
+      return result(normalizeRouteStackFlightResults(await callRouteStack(
         baseUrl,
         apiKey,
         apiSecret,
         "/mcp/flight/search",
         routeStackFlightSearchPayload(input),
-      ));
+      )));
     } catch (error) {
       return failure(error);
     }

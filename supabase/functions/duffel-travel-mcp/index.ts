@@ -7,6 +7,7 @@ import {
   duffelFlightSearchRequest,
   duffelPlaceSuggestionsPath,
 } from "../_shared/duffel.ts";
+import { normalizeDuffelFlightResults } from "../_shared/flight-results.ts";
 
 const SERVER_NAME = "eleven-duffel-travel";
 const SERVER_VERSION = "0.1.0";
@@ -95,10 +96,10 @@ function buildServer(accessToken: string): McpServer {
     async (input) => {
       try {
         const request = duffelFlightSearchRequest(input);
-        return toolResult(await callDuffel(accessToken, request.path, {
+        return toolResult(normalizeDuffelFlightResults(await callDuffel(accessToken, request.path, {
           method: "POST",
           data: request.data,
-        }));
+        })));
       } catch (error) {
         return errorResult(error);
       }
