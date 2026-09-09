@@ -202,10 +202,11 @@ the task, graph, or n8n routing contract.
 RouteStack is implemented as a second travel-discovery adapter. Its sandbox
 partner key and secret remain in Supabase; the adapter performs HMAC token
 exchange and JWT renewal internally. It presents canonical flight, hotel, and
-car location/search tools. Hotel and car results are currently bounded
-provider packets used to evaluate the sandbox; they must be normalized and
-stored behind protected result references before they may unlock approval or
-execution steps. The adapter intentionally omits RouteStack's checkout, order,
+car location/search tools. Hotel and car searches return compact canonical
+`travel.hotel_search.v1` and `travel.car_search.v1` packets. Opaque hotel
+tokens, car fare codes, and provider correlation IDs are stored behind the
+same protected `tool-result:` boundary used for flight offers. The adapter
+intentionally omits RouteStack's checkout, order,
 booking, payment, revalidation, and cancellation surface.
 
 Both flight adapters return `travel.flight_search.v1`: a bounded list of
@@ -219,8 +220,9 @@ are added later.
 and a future authorized transaction. It binds short-lived provider offer
 handles to the originating tool run, task, and step; only the service role can
 read it. The worker-facing packet contains a `tool-result:<uuid>` reference,
-never the provider handle. Flight packets fail closed when prices, ISO currency,
-segments, route continuity, timestamps, or freshness are invalid.
+never the provider handle. All travel packets fail closed when price, ISO
+currency, or freshness is invalid. Flight packets additionally validate
+segments, route continuity, and timestamps.
 
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through

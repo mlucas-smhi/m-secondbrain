@@ -12,7 +12,17 @@ import {
   protectedRouteStackOfferRefs,
   validateCanonicalFlightResults,
 } from "../_shared/flight-results.ts";
-import { storeProtectedFlightResult } from "../_shared/tool-results.ts";
+import {
+  normalizeRouteStackCarResults,
+  normalizeRouteStackHotelResults,
+  protectedRouteStackCarRefs,
+  protectedRouteStackHotelRefs,
+  validateCanonicalTravelResults,
+} from "../_shared/travel-results.ts";
+import {
+  storeProtectedFlightResult,
+  storeProtectedHotelOrCarResult,
+} from "../_shared/tool-results.ts";
 
 const flightSliceSchema = z.object({
   origin: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
@@ -124,15 +134,22 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
       })).min(1).max(8),
       currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).optional(),
       limit: z.number().int().min(1).max(20).optional(),
+      tool_run_id: z.uuid().optional(),
     }).refine((value) => value.check_out_date > value.check_in_date, {
       message: "check_out_date must be after check_in_date",
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   }, async (input) => {
     try {
-      return result(await callRouteStack(
+      const payload = await callRouteStack(
         baseUrl, apiKey, apiSecret, "/mcp/hotel/search-hotels", routeStackHotelSearchPayload(input),
-      ));
+      );
+      const normalized = normalizeRouteStackHotelResults(payload);
+      validateCanonicalTravelResults(normalized);
+      const resultRef = await storeProtectedHotelOrCarResult(
+        input.tool_run_id, normalized, protectedRouteStackHotelRefs(payload),
+      );
+      return result({ ...normalized, result_ref: resultRef });
     } catch (error) {
       return failure(error);
     }
@@ -164,15 +181,22 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
       dropoff_date: z.iso.date(),
       dropoff_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
       limit: z.number().int().min(1).max(20).optional(),
+      tool_run_id: z.uuid().optional(),
     }).refine((value) => `${value.dropoff_date}T${value.dropoff_time}` > `${value.pickup_date}T${value.pickup_time}`, {
       message: "dropoff must be after pickup",
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   }, async (input) => {
     try {
-      return result(await callRouteStack(
+      const payload = await callRouteStack(
         baseUrl, apiKey, apiSecret, "/mcp/car/search", routeStackCarSearchPayload(input),
-      ));
+      );
+      const normalized = normalizeRouteStackCarResults(payload);
+      validateCanonicalTravelResults(normalized);
+      const resultRef = await storeProtectedHotelOrCarResult(
+        input.tool_run_id, normalized, protectedRouteStackCarRefs(payload),
+      );
+      return result({ ...normalized, result_ref: resultRef });
     } catch (error) {
       return failure(error);
     }

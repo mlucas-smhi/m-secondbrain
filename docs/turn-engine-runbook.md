@@ -137,9 +137,11 @@ The RouteStack sandbox adapter is `functions/routestack-travel-mcp`. Configure
 Supabase. It performs the documented HMAC partner-token exchange internally
 and renews the short-lived JWT before expiry or once after a 401. n8n continues
 to authenticate with `TRAVEL_MCP_API_KEY`. The adapter exposes read-only flight,
-hotel, and car location/search operations. Hotel and car searches are discovery
-canaries until their results have canonical validation and protected result
-references. RouteStack's revalidation, checkout, order, booking, payment, and
+hotel, and car location/search operations. Hotel and car searches return
+canonical `travel.hotel_search.v1` and `travel.car_search.v1` packets. Pass the
+current `task_step_tool_runs.id` as `tool_run_id` to store provider execution
+handles behind a `tool-result:` reference. RouteStack's revalidation, checkout,
+order, booking, payment, and
 cancellation operations are not registered.
 
 ## Caller identification
