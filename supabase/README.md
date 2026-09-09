@@ -384,6 +384,13 @@ and retries authentication once after a 401. n8n receives neither partner
 credential. Revalidation, checkout, order, booking, payment, and cancellation
 operations are not exposed.
 
+Flight search returns the validated `travel.flight_search.v1` contract. Pass a
+current `task_step_tool_runs.id` as `tool_run_id` in production worker calls;
+the adapter stores short-lived provider offer handles in the service-role-only
+`task_step_tool_results` table and returns only a `tool-result:<uuid>` pointer.
+Results with missing currency, invalid prices or segments, or expired validity
+fail closed.
+
 Set `DUFFEL_ACCESS_TOKEN`, a separate `TRAVEL_MCP_API_KEY`, and an allowlist in
 `TRAVEL_MCP_ALLOWED_ORIGINS`. MCP clients authenticate with the latter as a
 Bearer token. Provider results are timestamped and bounded before returning to

@@ -5,7 +5,12 @@ import {
   callRouteStack,
   routeStackFlightSearchPayload,
 } from "../_shared/routestack.ts";
-import { normalizeRouteStackFlightResults } from "../_shared/flight-results.ts";
+import {
+  normalizeRouteStackFlightResults,
+  protectedRouteStackOfferRefs,
+  validateCanonicalFlightResults,
+} from "../_shared/flight-results.ts";
+import { storeProtectedFlightResult } from "../_shared/tool-results.ts";
 
 const flightSliceSchema = z.object({
   origin: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
@@ -60,17 +65,24 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
       passengers: z.array(passengerSchema).min(1).max(9),
       cabin_class: z.enum(["economy", "premium_economy", "business", "first"]).optional(),
       max_connections: z.number().int().min(0).max(3).optional(),
+      tool_run_id: z.uuid().optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   }, async (input) => {
     try {
-      return result(normalizeRouteStackFlightResults(await callRouteStack(
+      const payload = await callRouteStack(
         baseUrl,
         apiKey,
         apiSecret,
         "/mcp/flight/search",
         routeStackFlightSearchPayload(input),
-      )));
+      );
+      const normalized = normalizeRouteStackFlightResults(payload);
+      validateCanonicalFlightResults(normalized);
+      const resultRef = await storeProtectedFlightResult(
+        input.tool_run_id, "routestack", normalized, protectedRouteStackOfferRefs(payload),
+      );
+      return result({ ...normalized, result_ref: resultRef });
     } catch (error) {
       return failure(error);
     }

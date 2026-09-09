@@ -104,6 +104,14 @@ raw inventory payloads, provider credentials, fare-source codes, or other
 opaque booking tokens to an LLM or general n8n branch. Persist transactional
 references separately when a later approved execution flow needs them.
 
+Pass the current `task_step_tool_runs.id` as `tool_run_id` when invoking flight
+search. The adapter stores provider execution handles in the service-role-only
+`task_step_tool_results` table and returns a `tool-result:<uuid>` reference.
+Treat `valid_until` as a hard boundary: re-search or revalidate after expiry.
+Never unlock an approval or reservation step from a result with missing ISO
+currency, non-positive price, incomplete segments, broken segment continuity,
+or invalid timestamps.
+
 The initial travel adapter is `functions/duffel-travel-mcp`, a stateless MCP v2
 Streamable HTTP server. It exposes canonical, read-only hotel and flight
 discovery tools. Flight search creates Duffel offer-request search records but

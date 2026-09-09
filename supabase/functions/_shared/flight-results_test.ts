@@ -1,5 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { normalizeDuffelFlightResults, normalizeRouteStackFlightResults } from "./flight-results.ts";
+import { assertThrows } from "jsr:@std/assert@1";
+import {
+  normalizeDuffelFlightResults,
+  normalizeRouteStackFlightResults,
+  protectedRouteStackOfferRefs,
+  validateCanonicalFlightResults,
+} from "./flight-results.ts";
 
 Deno.test("normalizes Duffel offers without raw provider payload", () => {
   const result = normalizeDuffelFlightResults({ data: { offers: [{
@@ -29,4 +35,24 @@ Deno.test("normalizes and bounds RouteStack offers without fare source tokens", 
   assertEquals(result.offers[0].segments[0].flight_number, "1195");
   assertEquals(JSON.stringify(result).includes("fareSourceCode"), false);
   assertEquals(JSON.stringify(result).includes("secret"), false);
+});
+
+Deno.test("rejects flight packets without currency", () => {
+  const result = normalizeRouteStackFlightResults({ result: [{
+    showOurprice: 100,
+    flights: [{
+      departure: "IAH", arrival: "EWR",
+      departureTime: "2026-10-14T10:00:00Z", arrivalTime: "2026-10-14T13:00:00Z",
+    }],
+  }] });
+  assertThrows(() => validateCanonicalFlightResults(result), Error, "missing an ISO currency");
+});
+
+Deno.test("keeps RouteStack execution handles only in protected refs", () => {
+  const payload = { result: [{ fareSourceCode: "opaque", sessionId: "session" }] };
+  const refs = protectedRouteStackOfferRefs(payload);
+  assertEquals(refs, {
+    "routestack:1": { fare_source_code: "opaque", session_id: "session" },
+  });
+  assertEquals(JSON.stringify(normalizeRouteStackFlightResults(payload)).includes("opaque"), false);
 });

@@ -212,6 +212,13 @@ tokens are excluded from the worker-facing result. Provider-specific execution
 references belong in protected tool-run storage when transactional operations
 are added later.
 
+`task_step_tool_results` is the protected handoff between read-only research
+and a future authorized transaction. It binds short-lived provider offer
+handles to the originating tool run, task, and step; only the service role can
+read it. The worker-facing packet contains a `tool-result:<uuid>` reference,
+never the provider handle. Flight packets fail closed when prices, ISO currency,
+segments, route continuity, timestamps, or freshness are invalid.
+
 Initiator identity, scoped authority, approvals, and closure recipients are
 stored separately from conversational context. Memory is referenced through
 provider-neutral `task_memory_refs`; GitHub can remain one provider during the

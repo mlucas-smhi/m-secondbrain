@@ -21,6 +21,7 @@ export type CanonicalFlightResults = {
   schema_version: "travel.flight_search.v1";
   provider: "duffel" | "routestack";
   retrieved_at: string;
+  valid_until: string;
   offer_count: number;
   returned_count: number;
   truncated: boolean;
@@ -58,15 +59,62 @@ function durationMinutes(value: unknown): number | null {
 }
 
 function base(provider: CanonicalFlightResults["provider"], offers: CanonicalFlightOffer[], count: number, maxOffers: number): CanonicalFlightResults {
+  const retrievedAt = new Date();
   return {
     schema_version: "travel.flight_search.v1",
     provider,
-    retrieved_at: new Date().toISOString(),
+    retrieved_at: retrievedAt.toISOString(),
+    valid_until: new Date(retrievedAt.getTime() + 10 * 60_000).toISOString(),
     offer_count: count,
     returned_count: offers.length,
     truncated: count > maxOffers,
     offers,
   };
+}
+
+export function validateCanonicalFlightResults(result: CanonicalFlightResults): void {
+  if (result.schema_version !== "travel.flight_search.v1" || result.offers.length === 0) {
+    throw new Error("flight search returned no valid offers");
+  }
+  if (Date.parse(result.valid_until) <= Date.now()) throw new Error("flight search result is stale");
+  for (const offer of result.offers) {
+    if (offer.total_amount === null || offer.total_amount <= 0) {
+      throw new Error(`flight offer ${offer.offer_key} is missing a valid total amount`);
+    }
+    if (!offer.total_currency || !/^[A-Z]{3}$/.test(offer.total_currency)) {
+      throw new Error(`flight offer ${offer.offer_key} is missing an ISO currency`);
+    }
+    if (offer.segments.length === 0) throw new Error(`flight offer ${offer.offer_key} has no segments`);
+    offer.segments.forEach((segment, index) => {
+      if (!segment.origin || !segment.destination || !segment.departing_at || !segment.arriving_at) {
+        throw new Error(`flight offer ${offer.offer_key} has an incomplete segment`);
+      }
+      if (Date.parse(segment.departing_at) >= Date.parse(segment.arriving_at)) {
+        throw new Error(`flight offer ${offer.offer_key} has invalid segment times`);
+      }
+      if (index > 0 && offer.segments[index - 1].destination !== segment.origin) {
+        throw new Error(`flight offer ${offer.offer_key} has a broken route`);
+      }
+    });
+  }
+}
+
+export function protectedDuffelOfferRefs(payload: unknown, maxOffers = 12): Record<string, unknown> {
+  const root = object(payload);
+  const offers = array(object(root.data).offers ?? root.data).slice(0, maxOffers).map(object);
+  return Object.fromEntries(offers.map((offer, index) => [
+    text(offer.id) ?? `duffel:${index + 1}`,
+    { offer_id: text(offer.id), expires_at: text(offer.expires_at) },
+  ]));
+}
+
+export function protectedRouteStackOfferRefs(payload: unknown, maxOffers = 12): Record<string, unknown> {
+  const root = object(payload);
+  const offers = array(root.result ?? object(root.data).result).slice(0, maxOffers).map(object);
+  return Object.fromEntries(offers.map((offer, index) => [
+    `routestack:${index + 1}`,
+    { fare_source_code: text(offer.fareSourceCode), session_id: text(offer.sessionId) },
+  ]));
 }
 
 export function normalizeDuffelFlightResults(payload: unknown, maxOffers = 12): CanonicalFlightResults {

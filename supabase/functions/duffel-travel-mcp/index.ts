@@ -7,7 +7,12 @@ import {
   duffelFlightSearchRequest,
   duffelPlaceSuggestionsPath,
 } from "../_shared/duffel.ts";
-import { normalizeDuffelFlightResults } from "../_shared/flight-results.ts";
+import {
+  normalizeDuffelFlightResults,
+  protectedDuffelOfferRefs,
+  validateCanonicalFlightResults,
+} from "../_shared/flight-results.ts";
+import { storeProtectedFlightResult } from "../_shared/tool-results.ts";
 
 const SERVER_NAME = "eleven-duffel-travel";
 const SERVER_VERSION = "0.1.0";
@@ -90,16 +95,24 @@ function buildServer(accessToken: string): McpServer {
         passengers: z.array(flightPassengerSchema).min(1).max(9),
         cabin_class: z.enum(["economy", "premium_economy", "business", "first"]).optional(),
         max_connections: z.number().int().min(0).max(3).optional(),
+        tool_run_id: z.uuid().optional(),
       }),
       annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
     },
     async (input) => {
       try {
-        const request = duffelFlightSearchRequest(input);
-        return toolResult(normalizeDuffelFlightResults(await callDuffel(accessToken, request.path, {
+        const { tool_run_id, ...searchInput } = input;
+        const request = duffelFlightSearchRequest(searchInput);
+        const payload = await callDuffel(accessToken, request.path, {
           method: "POST",
           data: request.data,
-        })));
+        });
+        const normalized = normalizeDuffelFlightResults(payload);
+        validateCanonicalFlightResults(normalized);
+        const resultRef = await storeProtectedFlightResult(
+          tool_run_id, "duffel", normalized, protectedDuffelOfferRefs(payload),
+        );
+        return toolResult({ ...normalized, result_ref: resultRef });
       } catch (error) {
         return errorResult(error);
       }
