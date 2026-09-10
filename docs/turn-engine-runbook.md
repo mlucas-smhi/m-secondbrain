@@ -66,6 +66,11 @@ The task layer claims executable steps rather than parent tasks:
 6. Reuse the same completion or failure idempotency key if the response is lost.
 7. Never claim another step inside the same workflow execution.
 
+The production hotel worker claims only `research.travel.hotel` steps. Its
+schedule polls once per minute, claims at most one step per execution, and exits
+cleanly when the queue is empty. Keep imported workflows inactive until an
+empty-queue execution and one controlled production-format task both pass.
+
 For `research.travel`, complete the step only with a valid `research.v1`
 envelope. Preserve factual evidence in `sources`, use stable keys for options,
 and make `recommendation.option_key` reference one of those options. Provider
