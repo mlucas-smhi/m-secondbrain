@@ -7,6 +7,9 @@ project_id = "m-secondbrain"
 [functions.security-check]
 verify_jwt = false
 
+[functions.memory-context]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

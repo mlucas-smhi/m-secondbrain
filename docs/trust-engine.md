@@ -53,3 +53,11 @@ forget(memory id)
 
 Git may supply curated POC records. Replacing that adapter with LiteGraph must
 not change callers, authorization policy, or stable Supabase references.
+
+The POC endpoint is `functions/memory-context`. It accepts an authenticated
+session, subject, query, purpose, and requested permission. The Git adapter
+finds candidate synthetic records inside the trusted service; the endpoint
+calls `security_check` for every candidate and returns only authorized fields.
+Denied records contribute neither content nor identifying metadata to the
+response. `DEFER` or `CHALLENGE` may be returned as handling guidance only when
+no authorized context is available.
