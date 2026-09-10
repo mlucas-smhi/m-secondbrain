@@ -1588,8 +1588,8 @@ SELECT is(
       WHERE idempotency_key = 'hotel-plan-v1:step:research-hotels'),
     'travel.flight.search'
   )),
-  'travel-inventory-primary',
-  'runtime resolution fails over to another active capability provider'
+  'travel-inventory-routestack',
+  'runtime resolution fails over to the next active capability provider by priority'
 );
 
 SELECT throws_ok(

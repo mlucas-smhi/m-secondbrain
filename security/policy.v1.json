@@ -1,0 +1,57 @@
+{
+  "version": "trust-v1",
+  "sensitivity": {
+    "1": "shared",
+    "2": "confidential",
+    "3": "private"
+  },
+  "authentication_assurance": {
+    "0": "unidentified",
+    "1": "claimed",
+    "2": "channel_associated",
+    "3": "strongly_authenticated",
+    "4": "step_up_authenticated"
+  },
+  "actions": {
+    "travel.research": {
+      "risk_level": 0,
+      "minimum_auth_assurance": 1,
+      "minimum_identity_confidence": 0.5,
+      "permissions": ["use"],
+      "confirmation_required": false,
+      "owner_only": false
+    },
+    "memory.read": {
+      "risk_level": 2,
+      "minimum_auth_assurance": 3,
+      "minimum_identity_confidence": 0.9,
+      "permissions": ["read", "use"],
+      "confirmation_required": false,
+      "owner_only": false
+    },
+    "memory.disclose": {
+      "risk_level": 2,
+      "minimum_auth_assurance": 3,
+      "minimum_identity_confidence": 0.9,
+      "permissions": ["disclose"],
+      "confirmation_required": false,
+      "owner_only": false
+    },
+    "communication.send": {
+      "risk_level": 3,
+      "minimum_auth_assurance": 3,
+      "minimum_identity_confidence": 0.95,
+      "permissions": ["write"],
+      "confirmation_required": true,
+      "owner_only": false
+    },
+    "travel.book": {
+      "risk_level": 5,
+      "minimum_auth_assurance": 4,
+      "minimum_identity_confidence": 0.98,
+      "permissions": ["write"],
+      "confirmation_required": true,
+      "owner_only": true
+    }
+  }
+}
