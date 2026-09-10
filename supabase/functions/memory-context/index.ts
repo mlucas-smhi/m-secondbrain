@@ -39,6 +39,10 @@ function safeMemory(memory: MemoryRecord) {
     memory_type: memory.memory_type,
     content: memory.content,
     source_ref: memory.source_ref,
+    source_actor_ref: memory.source_actor_ref,
+    thread_ref: memory.thread_ref,
+    task_ref: memory.task_ref,
+    confidence: memory.confidence,
     valid_from: memory.valid_from,
     valid_until: memory.valid_until,
     supersedes: memory.supersedes,
@@ -93,6 +97,7 @@ Deno.serve(async (request) => {
 
   const permission = body.permission as MemoryPermission;
   const candidates = await memoryProvider.search({
+    workspace_id: body.workspace_id,
     subject_ref: body.subject_ref,
     query: body.query,
     limit,

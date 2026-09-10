@@ -5,6 +5,29 @@ SET search_path = public, extensions;
 
 SELECT plan(9);
 
+-- Keep the suite repeatable after interrupted manual canaries leave the fixed
+-- synthetic identities in the local database.
+DELETE FROM public.trust_decision_audit
+WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
+  AND request_id LIKE 'trust-test-%';
+
+DELETE FROM public.trust_authority_grants
+WHERE principal_actor_id IN (
+  SELECT id FROM public.trust_actors
+  WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
+    AND actor_ref IN ('test:owner', 'test:family', 'test:assistant')
+);
+
+DELETE FROM public.trust_sessions
+WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
+  AND external_session_ref IN (
+    'test-owner-private', 'test-owner-company', 'test-family', 'test-assistant'
+  );
+
+DELETE FROM public.trust_actors
+WHERE workspace_id = '00000000-0000-4000-8000-000000000001'
+  AND actor_ref IN ('test:owner', 'test:family', 'test:assistant');
+
 INSERT INTO public.trust_actors (workspace_id, actor_ref)
 VALUES
   ('00000000-0000-4000-8000-000000000001', 'test:owner'),

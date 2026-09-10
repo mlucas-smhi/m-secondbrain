@@ -2,6 +2,7 @@ export type MemoryPermission = "read" | "use" | "disclose";
 
 export type MemoryRecord = {
   id: string;
+  workspace_id: string;
   subject_ref: string;
   owner_ref: string;
   memory_type: string;
@@ -9,6 +10,10 @@ export type MemoryRecord = {
   sensitivity_level: 1 | 2 | 3;
   compartment: string;
   source_ref: string;
+  source_actor_ref: string;
+  thread_ref: string | null;
+  task_ref: string | null;
+  confidence: number;
   valid_from: string;
   valid_until: string | null;
   status: "active" | "superseded" | "expired";
@@ -16,6 +21,7 @@ export type MemoryRecord = {
 };
 
 export type MemorySearchRequest = {
+  workspace_id: string;
   subject_ref: string;
   query: string;
   limit: number;
@@ -30,6 +36,7 @@ export interface MemoryProvider {
 const SYNTHETIC_MEMORIES: MemoryRecord[] = [
   {
     id: "git-memory:test-owner:travel-location-v1",
+    workspace_id: "00000000-0000-4000-8000-000000000001",
     subject_ref: "test:owner",
     owner_ref: "test:owner",
     memory_type: "preference",
@@ -37,6 +44,10 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
     sensitivity_level: 1,
     compartment: "travel",
     source_ref: "fixture:synthetic-owner-statement-1",
+    source_actor_ref: "test:owner",
+    thread_ref: null,
+    task_ref: null,
+    confidence: 1,
     valid_from: "2026-09-10T00:00:00Z",
     valid_until: null,
     status: "active",
@@ -44,6 +55,7 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
   },
   {
     id: "git-memory:test-owner:business-counsel-v1",
+    workspace_id: "00000000-0000-4000-8000-000000000001",
     subject_ref: "test:owner",
     owner_ref: "test:owner",
     memory_type: "confidential_context",
@@ -51,6 +63,10 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
     sensitivity_level: 3,
     compartment: "business",
     source_ref: "fixture:synthetic-private-conversation-1",
+    source_actor_ref: "test:owner",
+    thread_ref: null,
+    task_ref: null,
+    confidence: 1,
     valid_from: "2026-09-10T00:00:00Z",
     valid_until: null,
     status: "active",
@@ -58,6 +74,7 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
   },
   {
     id: "git-memory:test-owner:business-calendar-v1",
+    workspace_id: "00000000-0000-4000-8000-000000000001",
     subject_ref: "test:owner",
     owner_ref: "test:owner",
     memory_type: "operational_preference",
@@ -65,6 +82,10 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
     sensitivity_level: 2,
     compartment: "business",
     source_ref: "fixture:synthetic-business-preference-1",
+    source_actor_ref: "test:owner",
+    thread_ref: null,
+    task_ref: null,
+    confidence: 1,
     valid_from: "2026-09-10T00:00:00Z",
     valid_until: null,
     status: "active",
@@ -72,6 +93,7 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
   },
   {
     id: "git-memory:test-owner:family-breakfast-v1",
+    workspace_id: "00000000-0000-4000-8000-000000000001",
     subject_ref: "test:owner",
     owner_ref: "test:owner",
     memory_type: "preference",
@@ -79,6 +101,10 @@ const SYNTHETIC_MEMORIES: MemoryRecord[] = [
     sensitivity_level: 1,
     compartment: "family",
     source_ref: "fixture:synthetic-family-statement-1",
+    source_actor_ref: "test:family",
+    thread_ref: null,
+    task_ref: null,
+    confidence: 0.95,
     valid_from: "2026-09-10T00:00:00Z",
     valid_until: null,
     status: "active",
@@ -97,6 +123,7 @@ export class GitMemoryProvider implements MemoryProvider {
     const queryTokens = new Set(tokens(request.query));
     const minimumScore = queryTokens.size >= 3 ? 2 : 1;
     const matches = SYNTHETIC_MEMORIES
+      .filter((memory) => memory.workspace_id === request.workspace_id)
       .filter((memory) => memory.subject_ref === request.subject_ref)
       .filter((memory) => memory.status === "active")
       .filter((memory) => memory.valid_until === null || new Date(memory.valid_until) > request.now)

@@ -1,0 +1,22 @@
+{
+  "schema_version": "memory.v1",
+  "required": [
+    "memory_ref",
+    "workspace_id",
+    "subject_ref",
+    "owner_ref",
+    "memory_type",
+    "content",
+    "sensitivity_level",
+    "compartment",
+    "source_ref",
+    "source_actor_ref",
+    "confidence",
+    "valid_from",
+    "status"
+  ],
+  "sensitivity_levels": [1, 2, 3],
+  "statuses": ["candidate", "active", "superseded", "expired", "rejected"],
+  "permissions": ["read", "use", "disclose", "write", "correct", "delegate"],
+  "provider_operations": ["search", "get_context", "propose", "supersede", "forget"]
+}

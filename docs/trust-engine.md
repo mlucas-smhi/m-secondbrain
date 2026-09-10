@@ -61,3 +61,14 @@ calls `security_check` for every candidate and returns only authorized fields.
 Denied records contribute neither content nor identifying metadata to the
 response. `DEFER` or `CHALLENGE` may be returned as handling guidance only when
 no authorized context is available.
+
+The selected production provider and graph mapping are defined in
+`docs/litegraph-memory.md`. Provider search is always scoped by `workspace_id`;
+the gateway rejects cross-workspace results before authorization.
+
+## Voice identity
+
+Voice identity remains an evidence-only POC and is not an authentication
+factor in production policy. The media isolation, privacy requirements, test
+matrix, and go/no-go gate are defined in `docs/voice-identity-poc.md`.
+LiteGraph installation is deferred until that feasibility gate is resolved.
