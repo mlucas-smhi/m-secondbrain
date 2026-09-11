@@ -55,6 +55,15 @@ webhook.
   drop identity frames and continue the call.
 - Never route VibeVoice output back into the call audio.
 
+VibeVoice provides transcription and speaker diarization, not enrolled-speaker
+identity on its own. The POC uses a separate speaker-verification model to
+produce similarity evidence. Neither model authenticates a person or grants
+authority; the trust engine evaluates their evidence with other factors.
+
+The transparent relay implementation lives in `services/voice-bridge/`. Its
+first live call must run with `VOICE_FORK_MODE=disabled` so the audio path can
+be validated independently from all identity processing.
+
 ## Security semantics
 
 Voice similarity is evidence, not identity and never authority. The bridge may

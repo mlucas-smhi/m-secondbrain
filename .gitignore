@@ -1,0 +1,12 @@
+.DS_Store
+
+# Local SSH keys must never enter repository history.
+sshvibevoice
+sshvibevoice.pub
+
+# Voice bridge runtime state and secrets.
+services/voice-bridge/.env
+services/voice-bridge/data/
+services/voice-bridge/models/
+services/voice-bridge/__pycache__/
+
