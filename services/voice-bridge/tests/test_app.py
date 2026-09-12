@@ -1,4 +1,5 @@
 import os
+import base64
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,6 +8,7 @@ from twilio.request_validator import RequestValidator
 
 from bridge.app import (
     Settings,
+    RollingAudioBuffer,
     conversation_initiation_payload,
     outbound_twiml,
     validate_twilio_websocket_request,
@@ -47,6 +49,27 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             with self.assertRaisesRegex(RuntimeError, "VOICE_FORK_MODE"):
                 Settings.from_env()
+
+    def test_invalid_buffer_window_fails_closed(self) -> None:
+        env = VALID_ENV | {"ROLLING_BUFFER_SECONDS": "61"}
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "ROLLING_BUFFER_SECONDS"):
+                Settings.from_env()
+
+
+class RollingAudioBufferTests(unittest.TestCase):
+    def test_keeps_only_configured_window(self) -> None:
+        buffer = RollingAudioBuffer(1)
+        buffer.append_base64(base64.b64encode(b"a" * 6_000).decode())
+        buffer.append_base64(base64.b64encode(b"b" * 4_000).decode())
+        self.assertEqual(buffer.size, 8_000)
+        self.assertEqual(buffer.recent(1), b"a" * 4_000 + b"b" * 4_000)
+
+    def test_returns_requested_recent_audio(self) -> None:
+        buffer = RollingAudioBuffer(3)
+        buffer.append_base64(base64.b64encode(b"a" * 8_000).decode())
+        buffer.append_base64(base64.b64encode(b"b" * 8_000).decode())
+        self.assertEqual(buffer.recent(1), b"b" * 8_000)
 
 
 class TwimlTests(unittest.TestCase):

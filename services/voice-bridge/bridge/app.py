@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hmac
 import json
 import logging
 import os
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin
@@ -15,7 +17,43 @@ from twilio.rest import Client as TwilioClient
 
 
 LOG = logging.getLogger("voice_bridge")
-FORK_MODES = {"disabled", "count"}
+FORK_MODES = {"disabled", "count", "buffer"}
+MULAW_BYTES_PER_SECOND = 8_000
+
+
+class RollingAudioBuffer:
+    """Bounded, in-memory buffer for Twilio's 8 kHz mu-law caller audio."""
+
+    def __init__(self, seconds: int) -> None:
+        if seconds < 1 or seconds > 60:
+            raise ValueError("rolling buffer seconds must be between 1 and 60")
+        self.max_bytes = seconds * MULAW_BYTES_PER_SECOND
+        self._chunks: deque[bytes] = deque()
+        self._size = 0
+
+    def append_base64(self, payload: str) -> None:
+        chunk = base64.b64decode(payload, validate=True)
+        self._chunks.append(chunk)
+        self._size += len(chunk)
+        while self._size > self.max_bytes and self._chunks:
+            overflow = self._size - self.max_bytes
+            first = self._chunks[0]
+            if len(first) <= overflow:
+                self._chunks.popleft()
+                self._size -= len(first)
+            else:
+                self._chunks[0] = first[overflow:]
+                self._size -= overflow
+
+    def recent(self, seconds: int) -> bytes:
+        wanted = min(seconds * MULAW_BYTES_PER_SECOND, self._size)
+        if not wanted:
+            return b""
+        return b"".join(self._chunks)[-wanted:]
+
+    @property
+    def size(self) -> int:
+        return self._size
 
 
 @dataclass(frozen=True)
@@ -65,6 +103,8 @@ class Settings:
         values["elevenlabs_user_name"] = os.getenv("ELEVENLABS_USER_NAME", "Michael").strip()
         values["elevenlabs_greeting"] = os.getenv("ELEVENLABS_GREETING", "Hello").strip()
         values["rolling_buffer_seconds"] = int(os.getenv("ROLLING_BUFFER_SECONDS", "15"))
+        if not 1 <= values["rolling_buffer_seconds"] <= 60:
+            raise RuntimeError("ROLLING_BUFFER_SECONDS must be between 1 and 60")
         values["port"] = int(os.getenv("PORT", "8080"))
         values["public_base_url"] = values["public_base_url"].rstrip("/") + "/"
         return cls(**values)
@@ -172,6 +212,44 @@ async def twiml_outbound(request: web.Request) -> web.Response:
     return web.Response(text=outbound_twiml(settings.public_base_url), content_type="text/xml")
 
 
+async def verification_snippet(request: web.Request) -> web.Response:
+    """Return recent caller audio while a stream is active; never persist it."""
+    settings: Settings = request.app["settings"]
+    if not hmac.compare_digest(request.headers.get("X-Bridge-Key", ""), settings.bridge_api_key):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    if settings.voice_fork_mode != "buffer":
+        return web.json_response({"error": "audio_buffer_disabled"}, status=409)
+
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    stream_sid = str(body.get("stream_sid", "")).strip()
+    seconds = body.get("seconds", 7)
+    if not isinstance(seconds, int) or not 1 <= seconds <= settings.rolling_buffer_seconds:
+        return web.json_response({"error": "invalid_seconds"}, status=400)
+
+    buffers: dict[str, RollingAudioBuffer] = request.app["audio_buffers"]
+    if not stream_sid:
+        if len(buffers) != 1:
+            return web.json_response({"error": "stream_sid_required"}, status=400)
+        stream_sid = next(iter(buffers))
+    audio = buffers.get(stream_sid)
+    if audio is None:
+        return web.json_response({"error": "active_stream_not_found"}, status=404)
+    snippet = audio.recent(seconds)
+    response = web.json_response(
+        {
+            "stream_sid": stream_sid,
+            "format": "ulaw_8000",
+            "duration_ms": len(snippet) * 1000 // MULAW_BYTES_PER_SECOND,
+            "audio_base64": base64.b64encode(snippet).decode("ascii"),
+        }
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 async def media_stream(request: web.Request) -> web.WebSocketResponse:
     settings: Settings = request.app["settings"]
     if not validate_twilio_websocket_request(settings, request):
@@ -185,6 +263,7 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
     pump_task: asyncio.Task[None] | None = None
     inbound_frames = 0
     inbound_bytes = 0
+    audio_buffer: RollingAudioBuffer | None = None
 
     async def pump_elevenlabs_to_twilio() -> None:
         nonlocal el_ws, stream_sid
@@ -227,6 +306,9 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
 
             if event_type == "start":
                 stream_sid = event["start"]["streamSid"]
+                if settings.voice_fork_mode == "buffer":
+                    audio_buffer = RollingAudioBuffer(settings.rolling_buffer_seconds)
+                    request.app["audio_buffers"][stream_sid] = audio_buffer
                 el_session = ClientSession()
                 el_ws = await el_session.ws_connect(await get_signed_url(settings, el_session))
                 await el_ws.send_json(conversation_initiation_payload(settings))
@@ -235,9 +317,11 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
             elif event_type == "media" and el_ws is not None:
                 payload = event["media"]["payload"]
                 await el_ws.send_json({"user_audio_chunk": payload})
-                if settings.voice_fork_mode == "count":
+                if settings.voice_fork_mode in {"count", "buffer"}:
                     inbound_frames += 1
                     inbound_bytes += (len(payload) * 3) // 4
+                if audio_buffer is not None:
+                    audio_buffer.append_base64(payload)
             elif event_type == "stop":
                 break
     except Exception:
@@ -251,6 +335,8 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
             await el_ws.close()
         if el_session is not None and not el_session.closed:
             await el_session.close()
+        if stream_sid:
+            request.app["audio_buffers"].pop(stream_sid, None)
         LOG.info(
             "stream_stopped stream_sid=%s fork_mode=%s inbound_frames=%d inbound_bytes=%d",
             stream_sid,
@@ -265,11 +351,13 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
 def create_app(settings: Settings) -> web.Application:
     app = web.Application(client_max_size=64 * 1024)
     app["settings"] = settings
+    app["audio_buffers"] = {}
     app.add_routes(
         [
             web.get("/health", health),
             web.post("/calls/poc", originate_call),
             web.post("/twiml/outbound", twiml_outbound),
+            web.post("/verification/snippet", verification_snippet),
             web.get("/media-stream", media_stream),
         ]
     )

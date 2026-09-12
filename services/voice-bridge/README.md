@@ -13,6 +13,8 @@ to `disabled`; no call audio is retained or sent to speaker verification.
   for a bidirectional Media Stream.
 - `GET /media-stream` relays Twilio mu-law/8 kHz frames to the ElevenLabs agent
   WebSocket and sends agent audio back to Twilio.
+- `POST /verification/snippet` returns a recent caller-audio window only while
+  a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
 
 ## Safety properties
 
@@ -24,6 +26,8 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - The default fork mode is `disabled`.
 - The only pre-verification diagnostic mode, `count`, records frame and byte
   counts in logs but stores no audio.
+- `buffer` retains at most `ROLLING_BUFFER_SECONDS` of caller audio in RAM. The
+  buffer is deleted when the stream ends; it is never written to disk.
 - Unknown fork modes prevent startup.
 
 ## Local test
