@@ -5,7 +5,12 @@ from unittest.mock import patch
 
 from twilio.request_validator import RequestValidator
 
-from bridge.app import Settings, outbound_twiml, validate_twilio_websocket_request
+from bridge.app import (
+    Settings,
+    conversation_initiation_payload,
+    outbound_twiml,
+    validate_twilio_websocket_request,
+)
 
 
 VALID_ENV = {
@@ -27,6 +32,9 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.voice_fork_mode, "disabled")
         self.assertEqual(settings.port, 8080)
         self.assertEqual(settings.public_base_url, "https://bridge.example.com/")
+        self.assertEqual(settings.elevenlabs_agent_name, "11")
+        self.assertEqual(settings.elevenlabs_user_name, "Michael")
+        self.assertEqual(settings.elevenlabs_greeting, "Hello")
 
     def test_missing_secret_fails_closed(self) -> None:
         env = VALID_ENV | {"BRIDGE_API_KEY": ""}
@@ -46,6 +54,23 @@ class TwimlTests(unittest.TestCase):
         result = outbound_twiml("https://bridge.example.com/")
         self.assertIn('url="wss://bridge.example.com/media-stream"', result)
         self.assertIn("<Connect>", result)
+
+
+class ElevenLabsInitiationTests(unittest.TestCase):
+    def test_supplies_required_first_message_variables(self) -> None:
+        with patch.dict(os.environ, VALID_ENV, clear=True):
+            settings = Settings.from_env()
+        self.assertEqual(
+            conversation_initiation_payload(settings),
+            {
+                "type": "conversation_initiation_client_data",
+                "dynamic_variables": {
+                    "agent_name": "11",
+                    "user_name": "Michael",
+                    "greeting": "Hello",
+                },
+            },
+        )
 
 
 class TwilioWebsocketValidationTests(unittest.TestCase):

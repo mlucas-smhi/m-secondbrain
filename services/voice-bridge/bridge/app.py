@@ -28,6 +28,9 @@ class Settings:
     twilio_from_number: str
     allowed_to_number: str
     bridge_api_key: str
+    elevenlabs_agent_name: str = "11"
+    elevenlabs_user_name: str = "Michael"
+    elevenlabs_greeting: str = "Hello"
     voice_fork_mode: str = "disabled"
     rolling_buffer_seconds: int = 15
     port: int = 8080
@@ -58,6 +61,9 @@ class Settings:
         if mode not in FORK_MODES:
             raise RuntimeError(f"VOICE_FORK_MODE must be one of {sorted(FORK_MODES)}")
         values["voice_fork_mode"] = mode
+        values["elevenlabs_agent_name"] = os.getenv("ELEVENLABS_AGENT_NAME", "11").strip()
+        values["elevenlabs_user_name"] = os.getenv("ELEVENLABS_USER_NAME", "Michael").strip()
+        values["elevenlabs_greeting"] = os.getenv("ELEVENLABS_GREETING", "Hello").strip()
         values["rolling_buffer_seconds"] = int(os.getenv("ROLLING_BUFFER_SECONDS", "15"))
         values["port"] = int(os.getenv("PORT", "8080"))
         values["public_base_url"] = values["public_base_url"].rstrip("/") + "/"
@@ -72,6 +78,17 @@ def outbound_twiml(public_base_url: str) -> str:
         f'<Stream url="{websocket_url}" />'
         "</Connect></Response>"
     )
+
+
+def conversation_initiation_payload(settings: Settings) -> dict[str, Any]:
+    return {
+        "type": "conversation_initiation_client_data",
+        "dynamic_variables": {
+            "agent_name": settings.elevenlabs_agent_name,
+            "user_name": settings.elevenlabs_user_name,
+            "greeting": settings.elevenlabs_greeting,
+        },
+    }
 
 
 def public_request_url(settings: Settings, request: web.Request) -> str:
@@ -198,6 +215,8 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
                     metadata.get("user_input_audio_format"),
                     metadata.get("agent_output_audio_format"),
                 )
+            elif event_type == "client_error":
+                LOG.error("elevenlabs_client_error event=%s", event)
 
     try:
         async for message in twilio_ws:
@@ -210,7 +229,7 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
                 stream_sid = event["start"]["streamSid"]
                 el_session = ClientSession()
                 el_ws = await el_session.ws_connect(await get_signed_url(settings, el_session))
-                await el_ws.send_json({"type": "conversation_initiation_client_data"})
+                await el_ws.send_json(conversation_initiation_payload(settings))
                 pump_task = asyncio.create_task(pump_elevenlabs_to_twilio())
                 LOG.info("stream_started stream_sid=%s", stream_sid)
             elif event_type == "media" and el_ws is not None:
