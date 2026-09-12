@@ -1,8 +1,11 @@
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from bridge.app import Settings, outbound_twiml
+from twilio.request_validator import RequestValidator
+
+from bridge.app import Settings, outbound_twiml, validate_twilio_websocket_request
 
 
 VALID_ENV = {
@@ -43,6 +46,45 @@ class TwimlTests(unittest.TestCase):
         result = outbound_twiml("https://bridge.example.com/")
         self.assertIn('url="wss://bridge.example.com/media-stream"', result)
         self.assertIn("<Connect>", result)
+
+
+class TwilioWebsocketValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        with patch.dict(os.environ, VALID_ENV, clear=True):
+            self.settings = Settings.from_env()
+
+    def request_with_signature(self, signature: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            headers={"X-Twilio-Signature": signature},
+            rel_url=SimpleNamespace(path="/media-stream"),
+        )
+
+    def test_accepts_signature_without_trailing_slash(self) -> None:
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "https://bridge.example.com/media-stream", {}
+        )
+        self.assertTrue(
+            validate_twilio_websocket_request(
+                self.settings, self.request_with_signature(signature)
+            )
+        )
+
+    def test_accepts_documented_trailing_slash_signature(self) -> None:
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "https://bridge.example.com/media-stream/", {}
+        )
+        self.assertTrue(
+            validate_twilio_websocket_request(
+                self.settings, self.request_with_signature(signature)
+            )
+        )
+
+    def test_rejects_invalid_signature(self) -> None:
+        self.assertFalse(
+            validate_twilio_websocket_request(
+                self.settings, self.request_with_signature("invalid")
+            )
+        )
 
 
 if __name__ == "__main__":

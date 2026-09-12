@@ -85,6 +85,18 @@ def validate_twilio_request(settings: Settings, request: web.Request, form: dict
     )
 
 
+def validate_twilio_websocket_request(settings: Settings, request: web.Request) -> bool:
+    signature = request.headers.get("X-Twilio-Signature", "")
+    request_url = public_request_url(settings, request)
+    validator = RequestValidator(settings.twilio_auth_token)
+    if validator.validate(request_url, {}, signature):
+        return True
+
+    # Twilio documents that Media Streams handshake signatures may use a
+    # trailing slash even when the configured WSS URL omits it.
+    return validator.validate(request_url.rstrip("/") + "/", {}, signature)
+
+
 async def get_signed_url(settings: Settings, session: ClientSession) -> str:
     endpoint = "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url"
     async with session.get(
@@ -139,10 +151,7 @@ async def twiml_outbound(request: web.Request) -> web.Response:
 
 async def media_stream(request: web.Request) -> web.WebSocketResponse:
     settings: Settings = request.app["settings"]
-    signature = request.headers.get("X-Twilio-Signature", "")
-    if not RequestValidator(settings.twilio_auth_token).validate(
-        public_request_url(settings, request), {}, signature
-    ):
+    if not validate_twilio_websocket_request(settings, request):
         raise web.HTTPForbidden(text="forbidden")
     twilio_ws = web.WebSocketResponse(heartbeat=20)
     await twilio_ws.prepare(request)
