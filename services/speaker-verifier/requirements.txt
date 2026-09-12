@@ -1,0 +1,4 @@
+aiohttp==3.12.15
+huggingface_hub>=0.24,<1.0
+hf_transfer>=0.1.8,<1.0
+speechbrain==1.0.3
