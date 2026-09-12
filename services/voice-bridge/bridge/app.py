@@ -89,12 +89,18 @@ def validate_twilio_websocket_request(settings: Settings, request: web.Request) 
     signature = request.headers.get("X-Twilio-Signature", "")
     request_url = public_request_url(settings, request)
     validator = RequestValidator(settings.twilio_auth_token)
-    if validator.validate(request_url, {}, signature):
-        return True
+    websocket_url = request_url.replace("https://", "wss://", 1)
 
-    # Twilio documents that Media Streams handshake signatures may use a
-    # trailing slash even when the configured WSS URL omits it.
-    return validator.validate(request_url.rstrip("/") + "/", {}, signature)
+    # The public proxy presents HTTPS to the app, while Twilio signs the WSS
+    # Stream URL. Twilio also documents a trailing-slash signature variant for
+    # Media Streams handshakes, so validate all canonical forms and nothing else.
+    candidate_urls = {
+        request_url.rstrip("/"),
+        request_url.rstrip("/") + "/",
+        websocket_url.rstrip("/"),
+        websocket_url.rstrip("/") + "/",
+    }
+    return any(validator.validate(url, {}, signature) for url in candidate_urls)
 
 
 async def get_signed_url(settings: Settings, session: ClientSession) -> str:

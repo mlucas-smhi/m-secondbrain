@@ -79,6 +79,26 @@ class TwilioWebsocketValidationTests(unittest.TestCase):
             )
         )
 
+    def test_accepts_wss_signature(self) -> None:
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "wss://bridge.example.com/media-stream", {}
+        )
+        self.assertTrue(
+            validate_twilio_websocket_request(
+                self.settings, self.request_with_signature(signature)
+            )
+        )
+
+    def test_accepts_wss_trailing_slash_signature(self) -> None:
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "wss://bridge.example.com/media-stream/", {}
+        )
+        self.assertTrue(
+            validate_twilio_websocket_request(
+                self.settings, self.request_with_signature(signature)
+            )
+        )
+
     def test_rejects_invalid_signature(self) -> None:
         self.assertFalse(
             validate_twilio_websocket_request(
