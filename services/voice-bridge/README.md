@@ -15,6 +15,9 @@ to `disabled`; no call audio is retained or sent to speaker verification.
   WebSocket and sends agent audio back to Twilio.
 - `POST /verification/snippet` returns a recent caller-audio window only while
   a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
+- `POST /verification/evaluate` converts a transient caller window to mono
+  24-kHz PCM WAV and asks the configured speaker-verification service for
+  `MATCH`, `NO_MATCH`, or `INCONCLUSIVE` evidence. It is observation-only.
 
 ## Safety properties
 
@@ -29,6 +32,8 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - `buffer` retains at most `ROLLING_BUFFER_SECONDS` of caller audio in RAM. The
   buffer is deleted when the stream ends; it is never written to disk.
 - Unknown fork modes prevent startup.
+- Verifier failures resolve to `INCONCLUSIVE` and never interrupt the call.
+- The bridge does not translate a voice verdict into identity or authority.
 
 ## Local test
 

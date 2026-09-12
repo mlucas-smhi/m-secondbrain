@@ -10,7 +10,9 @@ from bridge.app import (
     Settings,
     RollingAudioBuffer,
     conversation_initiation_payload,
+    mulaw_8khz_to_wav_24khz,
     outbound_twiml,
+    parse_verifier_result,
     validate_twilio_websocket_request,
 )
 
@@ -56,6 +58,12 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "ROLLING_BUFFER_SECONDS"):
                 Settings.from_env()
 
+    def test_observe_mode_requires_verifier_configuration(self) -> None:
+        env = VALID_ENV | {"VERIFIER_MODE": "observe"}
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "SPEAKER_VERIFIER_URL"):
+                Settings.from_env()
+
 
 class RollingAudioBufferTests(unittest.TestCase):
     def test_keeps_only_configured_window(self) -> None:
@@ -70,6 +78,25 @@ class RollingAudioBufferTests(unittest.TestCase):
         buffer.append_base64(base64.b64encode(b"a" * 8_000).decode())
         buffer.append_base64(base64.b64encode(b"b" * 8_000).decode())
         self.assertEqual(buffer.recent(1), b"b" * 8_000)
+
+
+class VerifierAdapterTests(unittest.TestCase):
+    def test_converts_one_second_mulaw_to_24khz_wav(self) -> None:
+        wav = mulaw_8khz_to_wav_24khz(bytes([0xFF]) * 8_000)
+        self.assertEqual(wav[:4], b"RIFF")
+        self.assertEqual(len(wav), 44 + 24_000 * 2)
+
+    def test_accepts_structured_verdict(self) -> None:
+        self.assertEqual(
+            parse_verifier_result(
+                {"verdict": "MATCH", "score": 0.91, "model": "test", "model_version": "1"}
+            )["verdict"],
+            "MATCH",
+        )
+
+    def test_rejects_invalid_verdict(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid verdict"):
+            parse_verifier_result({"verdict": "ALLOW", "score": 1})
 
 
 class TwimlTests(unittest.TestCase):

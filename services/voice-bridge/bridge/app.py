@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import io
 import json
 import logging
 import os
+import struct
+import wave
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -18,6 +21,8 @@ from twilio.rest import Client as TwilioClient
 
 LOG = logging.getLogger("voice_bridge")
 FORK_MODES = {"disabled", "count", "buffer"}
+VERIFIER_MODES = {"disabled", "observe"}
+VERDICTS = {"MATCH", "NO_MATCH", "INCONCLUSIVE"}
 MULAW_BYTES_PER_SECOND = 8_000
 
 
@@ -56,6 +61,49 @@ class RollingAudioBuffer:
         return self._size
 
 
+def mulaw_to_pcm16(sample: int) -> int:
+    """Decode one G.711 mu-law byte to signed 16-bit PCM."""
+    value = (~sample) & 0xFF
+    sign = value & 0x80
+    exponent = (value >> 4) & 0x07
+    mantissa = value & 0x0F
+    magnitude = ((mantissa << 3) + 0x84) << exponent
+    decoded = magnitude - 0x84
+    return -decoded if sign else decoded
+
+
+def mulaw_8khz_to_wav_24khz(audio: bytes) -> bytes:
+    """Convert caller audio for the verifier without touching the relay path."""
+    pcm = bytearray()
+    for sample in audio:
+        decoded = struct.pack("<h", mulaw_to_pcm16(sample))
+        # 24 kHz is exactly 3x 8 kHz. Repetition is deterministic and sufficient
+        # for the POC boundary; the verifier may apply its own resampler.
+        pcm.extend(decoded * 3)
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(24_000)
+        wav.writeframes(bytes(pcm))
+    return output.getvalue()
+
+
+def parse_verifier_result(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict) or body.get("verdict") not in VERDICTS:
+        raise ValueError("verifier returned an invalid verdict")
+    score = body.get("score")
+    if score is not None and (not isinstance(score, (int, float)) or not 0 <= score <= 1):
+        raise ValueError("verifier returned an invalid score")
+    return {
+        "verdict": body["verdict"],
+        "score": score,
+        "model": str(body.get("model", "unknown")),
+        "model_version": str(body.get("model_version", "unknown")),
+        "reason_codes": body.get("reason_codes", []),
+    }
+
+
 @dataclass(frozen=True)
 class Settings:
     public_base_url: str
@@ -70,6 +118,10 @@ class Settings:
     elevenlabs_user_name: str = "Michael"
     elevenlabs_greeting: str = "Hello"
     voice_fork_mode: str = "disabled"
+    verifier_mode: str = "disabled"
+    speaker_verifier_url: str = ""
+    speaker_verifier_api_key: str = ""
+    verifier_timeout_seconds: float = 5.0
     rolling_buffer_seconds: int = 15
     port: int = 8080
 
@@ -99,6 +151,25 @@ class Settings:
         if mode not in FORK_MODES:
             raise RuntimeError(f"VOICE_FORK_MODE must be one of {sorted(FORK_MODES)}")
         values["voice_fork_mode"] = mode
+        verifier_mode = os.getenv("VERIFIER_MODE", "disabled").strip().lower()
+        if verifier_mode not in VERIFIER_MODES:
+            raise RuntimeError(f"VERIFIER_MODE must be one of {sorted(VERIFIER_MODES)}")
+        values["verifier_mode"] = verifier_mode
+        values["speaker_verifier_url"] = os.getenv("SPEAKER_VERIFIER_URL", "").strip()
+        values["speaker_verifier_api_key"] = os.getenv(
+            "SPEAKER_VERIFIER_API_KEY", ""
+        ).strip()
+        values["verifier_timeout_seconds"] = float(
+            os.getenv("VERIFIER_TIMEOUT_SECONDS", "5")
+        )
+        if verifier_mode == "observe" and (
+            not values["speaker_verifier_url"] or not values["speaker_verifier_api_key"]
+        ):
+            raise RuntimeError(
+                "SPEAKER_VERIFIER_URL and SPEAKER_VERIFIER_API_KEY are required in observe mode"
+            )
+        if not 0.1 <= values["verifier_timeout_seconds"] <= 30:
+            raise RuntimeError("VERIFIER_TIMEOUT_SECONDS must be between 0.1 and 30")
         values["elevenlabs_agent_name"] = os.getenv("ELEVENLABS_AGENT_NAME", "11").strip()
         values["elevenlabs_user_name"] = os.getenv("ELEVENLABS_USER_NAME", "Michael").strip()
         values["elevenlabs_greeting"] = os.getenv("ELEVENLABS_GREETING", "Hello").strip()
@@ -250,6 +321,68 @@ async def verification_snippet(request: web.Request) -> web.Response:
     return response
 
 
+async def evaluate_speaker(request: web.Request) -> web.Response:
+    """Send a transient snippet to a verifier and return evidence only."""
+    settings: Settings = request.app["settings"]
+    if not hmac.compare_digest(request.headers.get("X-Bridge-Key", ""), settings.bridge_api_key):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    if settings.voice_fork_mode != "buffer" or settings.verifier_mode != "observe":
+        return web.json_response({"error": "speaker_verifier_disabled"}, status=409)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    stream_sid = str(body.get("stream_sid", "")).strip()
+    claimed_actor_ref = str(body.get("claimed_actor_ref", "")).strip()
+    seconds = body.get("seconds", 7)
+    if not stream_sid or not claimed_actor_ref:
+        return web.json_response({"error": "stream_and_actor_required"}, status=400)
+    if not isinstance(seconds, int) or not 1 <= seconds <= settings.rolling_buffer_seconds:
+        return web.json_response({"error": "invalid_seconds"}, status=400)
+    audio = request.app["audio_buffers"].get(stream_sid)
+    if audio is None:
+        return web.json_response({"error": "active_stream_not_found"}, status=404)
+    snippet = audio.recent(seconds)
+    if len(snippet) < MULAW_BYTES_PER_SECOND:
+        return web.json_response(
+            {"verdict": "INCONCLUSIVE", "reason_codes": ["insufficient_speech_window"]}
+        )
+
+    payload = {
+        "claimed_actor_ref": claimed_actor_ref,
+        "audio_format": "wav_pcm_s16le_24000_mono",
+        "audio_base64": base64.b64encode(mulaw_8khz_to_wav_24khz(snippet)).decode("ascii"),
+    }
+    try:
+        timeout = settings.verifier_timeout_seconds
+        async with ClientSession() as session:
+            async with session.post(
+                settings.speaker_verifier_url,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.speaker_verifier_api_key}"},
+                timeout=timeout,
+            ) as response:
+                response.raise_for_status()
+                evidence = parse_verifier_result(await response.json())
+    except Exception as error:
+        LOG.warning("speaker_verifier_failed stream_sid=%s error_type=%s", stream_sid, type(error).__name__)
+        return web.json_response(
+            {"verdict": "INCONCLUSIVE", "reason_codes": ["verifier_unavailable"]},
+            status=200,
+        )
+    evidence.update(
+        {
+            "mode": "observation_only",
+            "claimed_actor_ref": claimed_actor_ref,
+            "stream_sid": stream_sid,
+            "speech_window_ms": len(snippet) * 1000 // MULAW_BYTES_PER_SECOND,
+        }
+    )
+    response = web.json_response(evidence)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 async def media_stream(request: web.Request) -> web.WebSocketResponse:
     settings: Settings = request.app["settings"]
     if not validate_twilio_websocket_request(settings, request):
@@ -358,6 +491,7 @@ def create_app(settings: Settings) -> web.Application:
             web.post("/calls/poc", originate_call),
             web.post("/twiml/outbound", twiml_outbound),
             web.post("/verification/snippet", verification_snippet),
+            web.post("/verification/evaluate", evaluate_speaker),
             web.get("/media-stream", media_stream),
         ]
     )
