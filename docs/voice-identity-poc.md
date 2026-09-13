@@ -151,3 +151,9 @@ LiteGraph installation remains deferred until this voice feasibility gate is
 resolved. The provider-neutral memory contract and graph mapping may continue
 to evolve in Git without provisioning LiteGraph, credentials, containers, or
 MCP access.
+
+Concurrent calls and policy-controlled patch-ins are designed separately in
+`docs/live-call-orchestration.md`. Before enabling concurrent voice sessions,
+speaker verification must replace its single-active-stream convenience with a
+session-bound capability so evidence can never be taken from another caller's
+leg.
