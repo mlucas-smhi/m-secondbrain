@@ -5,11 +5,13 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from twilio.request_validator import RequestValidator
+from aiohttp.test_utils import TestClient, TestServer
 
 from bridge.app import (
     Settings,
     RollingAudioBuffer,
     conversation_initiation_payload,
+    create_app,
     mulaw_8khz_to_wav_24khz,
     outbound_twiml,
     parse_verifier_result,
@@ -97,6 +99,28 @@ class VerifierAdapterTests(unittest.TestCase):
     def test_rejects_invalid_verdict(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid verdict"):
             parse_verifier_result({"verdict": "ALLOW", "score": 1})
+
+
+class VerificationEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bodyless_get_ignores_json_entity_headers(self) -> None:
+        env = VALID_ENV | {
+            "VOICE_FORK_MODE": "buffer",
+            "VERIFIER_MODE": "observe",
+            "SPEAKER_VERIFIER_URL": "http://127.0.0.1:8090/verify",
+            "SPEAKER_VERIFIER_API_KEY": "verifier-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            app = create_app(Settings.from_env())
+        async with TestClient(TestServer(app)) as client:
+            response = await client.get(
+                "/verification/evaluate",
+                headers={
+                    "X-Bridge-Key": "bridge-secret",
+                    "Content-Type": "application/json",
+                },
+            )
+            self.assertEqual(response.status, 409)
+            self.assertEqual(await response.json(), {"error": "active_stream_not_unique"})
 
 
 class TwimlTests(unittest.TestCase):

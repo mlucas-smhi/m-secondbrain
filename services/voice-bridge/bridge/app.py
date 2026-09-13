@@ -332,7 +332,10 @@ async def evaluate_speaker(request: web.Request) -> web.Response:
     # endpoint is dedicated to the owner's enrollment, so an omitted body uses
     # the fixed owner reference and seven-second window. Explicit JSON remains
     # supported for manual diagnostics.
-    if request.can_read_body:
+    # GET is the bodyless ElevenLabs tool contract. Some proxies/clients still
+    # attach entity headers that make aiohttp report ``can_read_body`` even
+    # though no JSON document exists, so never attempt body parsing for GET.
+    if request.method == "POST" and request.can_read_body:
         try:
             body = await request.json()
         except (json.JSONDecodeError, TypeError):
