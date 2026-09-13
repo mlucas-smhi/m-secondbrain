@@ -328,18 +328,30 @@ async def evaluate_speaker(request: web.Request) -> web.Response:
         return web.json_response({"error": "unauthorized"}, status=401)
     if settings.voice_fork_mode != "buffer" or settings.verifier_mode != "observe":
         return web.json_response({"error": "speaker_verifier_disabled"}, status=409)
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, TypeError):
-        return web.json_response({"error": "invalid_json"}, status=400)
+    # ElevenLabs webhook tools can intentionally send an empty body. This POC
+    # endpoint is dedicated to the owner's enrollment, so an omitted body uses
+    # the fixed owner reference and seven-second window. Explicit JSON remains
+    # supported for manual diagnostics.
+    if request.can_read_body:
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, TypeError):
+            return web.json_response({"error": "invalid_json"}, status=400)
+    else:
+        body = {}
     stream_sid = str(body.get("stream_sid", "")).strip()
-    claimed_actor_ref = str(body.get("claimed_actor_ref", "")).strip()
+    claimed_actor_ref = str(body.get("claimed_actor_ref", "person:m")).strip()
     seconds = body.get("seconds", 7)
-    if not stream_sid or not claimed_actor_ref:
-        return web.json_response({"error": "stream_and_actor_required"}, status=400)
+    if not claimed_actor_ref:
+        return web.json_response({"error": "claimed_actor_required"}, status=400)
     if not isinstance(seconds, int) or not 1 <= seconds <= settings.rolling_buffer_seconds:
         return web.json_response({"error": "invalid_seconds"}, status=400)
-    audio = request.app["audio_buffers"].get(stream_sid)
+    buffers: dict[str, RollingAudioBuffer] = request.app["audio_buffers"]
+    if not stream_sid:
+        if len(buffers) != 1:
+            return web.json_response({"error": "active_stream_not_unique"}, status=409)
+        stream_sid = next(iter(buffers))
+    audio = buffers.get(stream_sid)
     if audio is None:
         return web.json_response({"error": "active_stream_not_found"}, status=404)
     snippet = audio.recent(seconds)
@@ -491,6 +503,7 @@ def create_app(settings: Settings) -> web.Application:
             web.post("/calls/poc", originate_call),
             web.post("/twiml/outbound", twiml_outbound),
             web.post("/verification/snippet", verification_snippet),
+            web.get("/verification/evaluate", evaluate_speaker),
             web.post("/verification/evaluate", evaluate_speaker),
             web.get("/media-stream", media_stream),
         ]

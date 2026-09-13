@@ -15,9 +15,13 @@ to `disabled`; no call audio is retained or sent to speaker verification.
   WebSocket and sends agent audio back to Twilio.
 - `POST /verification/snippet` returns a recent caller-audio window only while
   a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
-- `POST /verification/evaluate` converts a transient caller window to mono
+- `GET` or `POST /verification/evaluate` converts a transient caller window to mono
   24-kHz PCM WAV and asks the configured speaker-verification service for
-  `MATCH`, `NO_MATCH`, or `INCONCLUSIVE` evidence. It is observation-only.
+  `MATCH`, `NO_MATCH`, or `INCONCLUSIVE` evidence. It is observation-only. A
+  caller may omit `stream_sid` only when exactly one call stream is active;
+  zero or multiple active streams fail closed. An authenticated empty-body
+  request uses the POC owner's fixed `person:m` enrollment and a seven-second
+  window, keeping agent-controlled identity claims out of the voice tool.
 
 ## Safety properties
 
