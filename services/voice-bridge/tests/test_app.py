@@ -15,6 +15,7 @@ from bridge.app import (
     mulaw_8khz_to_wav_24khz,
     outbound_twiml,
     parse_verifier_result,
+    twilio_call_options,
     validate_twilio_websocket_request,
 )
 
@@ -41,6 +42,18 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.elevenlabs_agent_name, "11")
         self.assertEqual(settings.elevenlabs_user_name, "Michael")
         self.assertEqual(settings.elevenlabs_greeting, "Hello")
+        self.assertEqual(settings.twilio_status_callback_url, "")
+
+    def test_accepts_live_call_status_callback_url(self) -> None:
+        env = VALID_ENV | {
+            "TWILIO_STATUS_CALLBACK_URL": "https://example.supabase.co/functions/v1/twilio-call-status"
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings.from_env()
+        self.assertEqual(
+            settings.twilio_status_callback_url,
+            "https://example.supabase.co/functions/v1/twilio-call-status",
+        )
 
     def test_missing_secret_fails_closed(self) -> None:
         env = VALID_ENV | {"BRIDGE_API_KEY": ""}
@@ -128,6 +141,18 @@ class TwimlTests(unittest.TestCase):
         result = outbound_twiml("https://bridge.example.com/")
         self.assertIn('url="wss://bridge.example.com/media-stream"', result)
         self.assertIn("<Connect>", result)
+
+    def test_outbound_call_requests_every_progress_event(self) -> None:
+        env = VALID_ENV | {
+            "TWILIO_STATUS_CALLBACK_URL": "https://example.supabase.co/functions/v1/twilio-call-status"
+        }
+        with patch.dict(os.environ, env, clear=True):
+            options = twilio_call_options(Settings.from_env(), "+15550000002")
+        self.assertEqual(
+            options["status_callback_event"],
+            ["initiated", "ringing", "answered", "completed"],
+        )
+        self.assertEqual(options["status_callback_method"], "POST")
 
 
 class ElevenLabsInitiationTests(unittest.TestCase):

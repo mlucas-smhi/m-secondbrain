@@ -497,6 +497,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/elevenlabs-post-call/index.ts"
 
+[functions.twilio-call-status]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/twilio-call-status/index.ts"
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

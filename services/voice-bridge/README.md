@@ -13,6 +13,9 @@ to `disabled`; no call audio is retained or sent to speaker verification.
   for a bidirectional Media Stream.
 - `GET /media-stream` relays Twilio mu-law/8 kHz frames to the ElevenLabs agent
   WebSocket and sends agent audio back to Twilio.
+- When `TWILIO_STATUS_CALLBACK_URL` is configured, outbound calls request all
+  four Twilio progress callbacks so the durable live-call registry can track
+  ringing, active, and terminal state without polling.
 - `POST /verification/snippet` returns a recent caller-audio window only while
   a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
 - `GET` or `POST /verification/evaluate` converts a transient caller window to mono
@@ -63,6 +66,10 @@ this repository or image.
 4. Keep `VOICE_FORK_MODE=disabled`.
 5. Start the service and verify `/health`.
 6. Call `POST /calls/poc` manually with the bridge key and allow-listed number.
+
+For durable live-call state, set `TWILIO_STATUS_CALLBACK_URL` to the deployed
+`twilio-call-status` Edge Function. That function validates Twilio's signature;
+the bridge never sends database credentials to Twilio.
 7. Confirm normal conversation, barge-in, audio quality, and disconnect behavior.
 8. Stop on any regression. Enable `count` only after the relay-only test passes.
 

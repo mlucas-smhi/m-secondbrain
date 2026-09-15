@@ -114,6 +114,7 @@ class Settings:
     twilio_from_number: str
     allowed_to_number: str
     bridge_api_key: str
+    twilio_status_callback_url: str = ""
     elevenlabs_agent_name: str = "11"
     elevenlabs_user_name: str = "Michael"
     elevenlabs_greeting: str = "Hello"
@@ -151,6 +152,9 @@ class Settings:
         if mode not in FORK_MODES:
             raise RuntimeError(f"VOICE_FORK_MODE must be one of {sorted(FORK_MODES)}")
         values["voice_fork_mode"] = mode
+        values["twilio_status_callback_url"] = os.getenv(
+            "TWILIO_STATUS_CALLBACK_URL", ""
+        ).strip()
         verifier_mode = os.getenv("VERIFIER_MODE", "disabled").strip().lower()
         if verifier_mode not in VERIFIER_MODES:
             raise RuntimeError(f"VERIFIER_MODE must be one of {sorted(VERIFIER_MODES)}")
@@ -189,6 +193,22 @@ def outbound_twiml(public_base_url: str) -> str:
         f'<Stream url="{websocket_url}" />'
         "</Connect></Response>"
     )
+
+
+def twilio_call_options(settings: Settings, destination: str) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "to": destination,
+        "from_": settings.twilio_from_number,
+        "url": urljoin(settings.public_base_url, "twiml/outbound"),
+        "method": "POST",
+    }
+    if settings.twilio_status_callback_url:
+        options.update(
+            status_callback=settings.twilio_status_callback_url,
+            status_callback_method="POST",
+            status_callback_event=["initiated", "ringing", "answered", "completed"],
+        )
+    return options
 
 
 def conversation_initiation_payload(settings: Settings) -> dict[str, Any]:
@@ -262,14 +282,9 @@ async def originate_call(request: web.Request) -> web.Response:
     if destination != settings.allowed_to_number:
         return web.json_response({"error": "destination_not_allowed"}, status=403)
 
-    twiml_url = urljoin(settings.public_base_url, "twiml/outbound")
     client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
     call = await asyncio.to_thread(
-        client.calls.create,
-        to=destination,
-        from_=settings.twilio_from_number,
-        url=twiml_url,
-        method="POST",
+        client.calls.create, **twilio_call_options(settings, destination)
     )
     return web.json_response({"call_sid": call.sid, "status": call.status}, status=202)
 
