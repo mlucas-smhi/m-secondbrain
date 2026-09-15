@@ -78,11 +78,26 @@ the bridge never sends database credentials to Twilio.
 
 ## RunPod startup
 
-`runpod-start.sh` starts the bridge from the persistent `/workspace` volume and
-then executes the RunPod image's original `/start.sh`, preserving SSH, Jupyter,
-and the rest of the base-image startup behavior. Configure the Pod's container
-start command as:
+`runpod-start.sh` restores persistent SSH host keys and authorized keys, deploys
+an explicitly pinned bridge commit, starts the bridge and Cloudflare tunnel,
+checks local and public health, and then executes the RunPod image's original
+`/start.sh`. This preserves Jupyter and the rest of the base-image behavior.
+
+Configure these runtime values:
+
+- `RUNPOD_SSH_PUBLIC_KEY`: the public key only; this is not a secret.
+- `CLOUDFLARE_TUNNEL_TOKEN`: a RunPod secret reference, never a literal in Git.
+- `VOICE_BRIDGE_GIT_REF`: a full commit SHA. Deliberately update it when a
+  tested bridge release should be activated.
+- `VOICE_BRIDGE_SOURCE_REPO`: defaults to `/workspace/m-secondbrain-source`.
+
+Configure the Pod's container start command as:
 
 ```text
 bash -lc /workspace/eleven-voice-poc/bridge-service/runpod-start.sh
 ```
+
+The persistent SSH identity lives under `/workspace/eleven-voice-poc/ssh`, so a
+container restart does not silently replace the host fingerprint or remove the
+authorized key. Startup fails closed when required files, credentials, tunnel,
+or health checks are unavailable.
