@@ -4,7 +4,7 @@ status: active
 importance: high
 retrieval_priority: high
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-09-15
 ---
 
 # Jesus Llorca
@@ -29,7 +29,7 @@ Organization:
 SEACOR
 
 Location:
-New York City
+New York City (primary); second home in Michigan
 
 ## Associated People
 
@@ -40,6 +40,7 @@ New York City
 
 - CFO for SEACOR
 - Lives in New York City
+- Owns a second house in Michigan
 - Curtis Miller reports into his organization
 - Core member of the CSO team
 
