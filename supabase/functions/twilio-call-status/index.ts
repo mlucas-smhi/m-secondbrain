@@ -6,6 +6,17 @@ import {
 } from "../_shared/twilio-webhook.ts";
 
 const WORKSPACE_ID = "00000000-0000-4000-8000-000000000001";
+const CALL_STATUSES = new Set([
+  "queued",
+  "initiated",
+  "ringing",
+  "in-progress",
+  "completed",
+  "busy",
+  "failed",
+  "no-answer",
+  "canceled",
+]);
 
 async function fetchCall(
   accountSid: string,
@@ -63,11 +74,14 @@ Deno.serve(async (request) => {
     direction = String(call.direction ?? "").trim();
     from = String(call.from ?? "").trim();
     to = String(call.to ?? "").trim();
+    const resolvedStatus = String(call.status ?? "").trim();
     status = streamEvent === "stream-started"
       ? "in-progress"
       : streamEvent === "stream-stopped"
       ? "completed"
-      : "failed";
+      : CALL_STATUSES.has(resolvedStatus)
+      ? resolvedStatus
+      : "in-progress";
   }
   const sequenceRaw = form.get("SequenceNumber")?.trim();
   const sequenceNumber = sequenceRaw === undefined || sequenceRaw === null || sequenceRaw === ""
@@ -100,6 +114,7 @@ Deno.serve(async (request) => {
       p_data: {
         callback_source: form.get("CallbackSource"),
         stream_event: streamEvent,
+        stream_error: form.get("StreamError"),
         stream_sid: form.get("StreamSid"),
         stir_status: form.get("StirStatus"),
       },

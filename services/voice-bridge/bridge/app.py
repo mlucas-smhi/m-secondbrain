@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin
 
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientConnectionError, ClientSession, WSMsgType, web
 from twilio.request_validator import RequestValidator
 from twilio.rest import Client as TwilioClient
 
@@ -501,7 +501,14 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
                 LOG.info("stream_started stream_sid=%s", stream_sid)
             elif event_type == "media" and el_ws is not None:
                 payload = event["media"]["payload"]
-                await el_ws.send_json({"user_audio_chunk": payload})
+                if el_ws.closed:
+                    LOG.info("elevenlabs_stream_closed stream_sid=%s", stream_sid)
+                    break
+                try:
+                    await el_ws.send_json({"user_audio_chunk": payload})
+                except ClientConnectionError:
+                    LOG.info("elevenlabs_stream_closed stream_sid=%s", stream_sid)
+                    break
                 if settings.voice_fork_mode in {"count", "buffer"}:
                     inbound_frames += 1
                     inbound_bytes += (len(payload) * 3) // 4

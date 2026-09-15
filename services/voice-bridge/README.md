@@ -22,6 +22,12 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - Inbound streams send signed `stream-started` and `stream-stopped` callbacks
   to the same URL. The callback service resolves the Twilio Call resource so
   inbound sessions are visible while they are live, not only after hangup.
+- A `stream-error` is retained as diagnostic evidence but uses the authoritative
+  Twilio Call status, preventing transport-callback races from mislabeling a
+  normally completed call as failed.
+- When ElevenLabs closes a conversation normally (including its silence
+  timeout), the bridge closes the Twilio stream cleanly instead of surfacing a
+  transport exception.
 - `POST /verification/snippet` returns a recent caller-audio window only while
   a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
 - `GET` or `POST /verification/evaluate` converts a transient caller window to mono
