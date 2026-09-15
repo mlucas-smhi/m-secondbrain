@@ -96,6 +96,8 @@ the bridge never sends database credentials to Twilio.
 an explicitly pinned bridge commit, starts the bridge and Cloudflare tunnel,
 checks local and public health, and then executes the RunPod image's original
 `/start.sh`. This preserves Jupyter and the rest of the base-image behavior.
+It discovers `cloudflared` through `PATH` or RunPod's persistent
+`/workspace/bin/cloudflared` location.
 
 Configure these runtime values:
 

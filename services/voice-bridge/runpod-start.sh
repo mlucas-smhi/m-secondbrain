@@ -120,6 +120,9 @@ start_tunnel() {
   [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] || fail "CLOUDFLARE_TUNNEL_TOKEN is missing"
   local cloudflared_bin
   cloudflared_bin="$(command -v cloudflared || true)"
+  if [[ -z "${cloudflared_bin}" && -x /workspace/bin/cloudflared ]]; then
+    cloudflared_bin="/workspace/bin/cloudflared"
+  fi
   [[ -n "${cloudflared_bin}" ]] || fail "cloudflared is unavailable"
 
   if ! pid_is_running "${tunnel_pid_file}" "cloudflared"; then
