@@ -22,8 +22,12 @@ Deno.serve(async (request) => {
 
   const rawBody = await request.text();
   const form = new URLSearchParams(rawBody);
+  // Twilio signs the exact public URL configured on the call. Edge gateways may
+  // rewrite request.url before it reaches the function, so reconstruct the
+  // canonical callback URL from SUPABASE_URL instead of trusting the proxy URL.
+  const callbackUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/twilio-call-status`;
   if (!await verifyTwilioFormSignature(
-    request.url,
+    callbackUrl,
     form,
     request.headers.get("x-twilio-signature"),
     authToken,
