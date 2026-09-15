@@ -12,6 +12,7 @@ import struct
 import wave
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 
@@ -116,6 +117,9 @@ class Settings:
     allowed_to_number: str
     bridge_api_key: str
     twilio_status_callback_url: str = ""
+    live_call_context_url: str = ""
+    turn_engine_api_key: str = ""
+    live_call_context_poll_seconds: float = 2.0
     elevenlabs_agent_name: str = "11"
     elevenlabs_user_name: str = "Michael"
     elevenlabs_greeting: str = "Hello"
@@ -156,6 +160,21 @@ class Settings:
         values["twilio_status_callback_url"] = os.getenv(
             "TWILIO_STATUS_CALLBACK_URL", ""
         ).strip()
+        values["live_call_context_url"] = os.getenv(
+            "LIVE_CALL_CONTEXT_URL", ""
+        ).strip()
+        values["turn_engine_api_key"] = os.getenv("TURN_ENGINE_API_KEY", "").strip()
+        if bool(values["live_call_context_url"]) != bool(values["turn_engine_api_key"]):
+            raise RuntimeError(
+                "LIVE_CALL_CONTEXT_URL and TURN_ENGINE_API_KEY must be configured together"
+            )
+        values["live_call_context_poll_seconds"] = float(
+            os.getenv("LIVE_CALL_CONTEXT_POLL_SECONDS", "2")
+        )
+        if not 0.5 <= values["live_call_context_poll_seconds"] <= 30:
+            raise RuntimeError(
+                "LIVE_CALL_CONTEXT_POLL_SECONDS must be between 0.5 and 30"
+            )
         verifier_mode = os.getenv("VERIFIER_MODE", "disabled").strip().lower()
         if verifier_mode not in VERIFIER_MODES:
             raise RuntimeError(f"VERIFIER_MODE must be one of {sorted(VERIFIER_MODES)}")
@@ -218,15 +237,109 @@ def twilio_call_options(settings: Settings, destination: str) -> dict[str, Any]:
     return options
 
 
-def conversation_initiation_payload(settings: Settings) -> dict[str, Any]:
+def conversation_initiation_payload(
+    settings: Settings, provider_call_ref: str | None = None
+) -> dict[str, Any]:
+    dynamic_variables = {
+        "agent_name": settings.elevenlabs_agent_name,
+        "user_name": settings.elevenlabs_user_name,
+        "greeting": settings.elevenlabs_greeting,
+    }
+    if provider_call_ref:
+        dynamic_variables["provider_call_ref"] = provider_call_ref
     return {
         "type": "conversation_initiation_client_data",
-        "dynamic_variables": {
-            "agent_name": settings.elevenlabs_agent_name,
-            "user_name": settings.elevenlabs_user_name,
-            "greeting": settings.elevenlabs_greeting,
-        },
+        "dynamic_variables": dynamic_variables,
     }
+
+
+def parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def newer_live_sessions(context: Any) -> list[dict[str, Any]]:
+    if not isinstance(context, dict):
+        return []
+    current = context.get("session")
+    others = context.get("other_live_sessions")
+    if not isinstance(current, dict) or not isinstance(others, list):
+        return []
+    current_started = parse_timestamp(current.get("started_at"))
+    if current_started is None:
+        return []
+    result: list[dict[str, Any]] = []
+    for other in others:
+        if not isinstance(other, dict):
+            continue
+        other_started = parse_timestamp(other.get("started_at"))
+        if other_started is not None and other_started > current_started:
+            result.append(other)
+    return result
+
+
+def live_call_context_update(other: dict[str, Any]) -> str:
+    actor_ref = other.get("actor_ref") if other.get("identity_state") == "verified" else None
+    identity = f"Verified caller reference: {actor_ref}." if actor_ref else (
+        "The caller's identity is not verified; do not guess or name them."
+    )
+    return (
+        "Live call event: a separate inbound caller has just connected. "
+        f"{identity} At the next natural opportunity, tell Michael that another "
+        "caller is waiting and ask whether he wants to handle the call. Do not "
+        "claim that the calls are joined, and do not merge, transfer, or disclose "
+        "either conversation."
+    )
+
+
+async def watch_live_call_context(
+    settings: Settings,
+    session: ClientSession,
+    el_ws: Any,
+    provider_call_ref: str,
+) -> None:
+    if not settings.live_call_context_url:
+        return
+    notified: set[str] = set()
+    while not el_ws.closed:
+        try:
+            async with session.post(
+                settings.live_call_context_url,
+                json={"provider_call_ref": provider_call_ref},
+                headers={"X-Turn-Engine-Key": settings.turn_engine_api_key},
+            ) as response:
+                if response.status == 404:
+                    await asyncio.sleep(settings.live_call_context_poll_seconds)
+                    continue
+                response.raise_for_status()
+                context = await response.json()
+            for other in newer_live_sessions(context):
+                session_id = str(other.get("session_id", "")).strip()
+                if not session_id or session_id in notified:
+                    continue
+                await el_ws.send_json(
+                    {"type": "contextual_update", "text": live_call_context_update(other)}
+                )
+                notified.add(session_id)
+                LOG.info(
+                    "live_call_context_sent call_sid=%s other_session_id=%s identity_state=%s",
+                    provider_call_ref,
+                    session_id,
+                    other.get("identity_state"),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            LOG.warning(
+                "live_call_context_failed call_sid=%s error_type=%s",
+                provider_call_ref,
+                type(error).__name__,
+            )
+        await asyncio.sleep(settings.live_call_context_poll_seconds)
 
 
 def public_request_url(settings: Settings, request: web.Request) -> str:
@@ -446,6 +559,8 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
     el_session: ClientSession | None = None
     el_ws: Any = None
     pump_task: asyncio.Task[None] | None = None
+    context_task: asyncio.Task[None] | None = None
+    provider_call_ref: str | None = None
     inbound_frames = 0
     inbound_bytes = 0
     audio_buffer: RollingAudioBuffer | None = None
@@ -491,13 +606,22 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
 
             if event_type == "start":
                 stream_sid = event["start"]["streamSid"]
+                provider_call_ref = str(event["start"].get("callSid", "")).strip() or None
                 if settings.voice_fork_mode == "buffer":
                     audio_buffer = RollingAudioBuffer(settings.rolling_buffer_seconds)
                     request.app["audio_buffers"][stream_sid] = audio_buffer
                 el_session = ClientSession()
                 el_ws = await el_session.ws_connect(await get_signed_url(settings, el_session))
-                await el_ws.send_json(conversation_initiation_payload(settings))
+                await el_ws.send_json(
+                    conversation_initiation_payload(settings, provider_call_ref)
+                )
                 pump_task = asyncio.create_task(pump_elevenlabs_to_twilio())
+                if provider_call_ref and settings.live_call_context_url:
+                    context_task = asyncio.create_task(
+                        watch_live_call_context(
+                            settings, el_session, el_ws, provider_call_ref
+                        )
+                    )
                 LOG.info("stream_started stream_sid=%s", stream_sid)
             elif event_type == "media" and el_ws is not None:
                 payload = event["media"]["payload"]
@@ -520,6 +644,9 @@ async def media_stream(request: web.Request) -> web.WebSocketResponse:
         LOG.exception("media_stream_failed stream_sid=%s", stream_sid)
         raise
     finally:
+        if context_task:
+            context_task.cancel()
+            await asyncio.gather(context_task, return_exceptions=True)
         if pump_task:
             pump_task.cancel()
             await asyncio.gather(pump_task, return_exceptions=True)

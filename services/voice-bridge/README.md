@@ -12,6 +12,11 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - `POST /twiml/inbound` accepts a Twilio-signed inbound voice webhook and gives
   that caller a separate media stream and ElevenLabs conversation. Pointing a
   production number at this route is a separate activation step.
+- Each conversation receives its Twilio Call SID as the `provider_call_ref`
+  dynamic variable. When live-call context is configured, the bridge watches
+  the protected registry and sends a non-interrupting ElevenLabs contextual
+  update to an older active call when a newer call appears. It never joins,
+  transfers, or exposes either conversation.
 - `POST /twiml/outbound` validates Twilio's request signature and returns TwiML
   for a bidirectional Media Stream.
 - `GET /media-stream` relays Twilio mu-law/8 kHz frames to the ElevenLabs agent
@@ -96,6 +101,10 @@ Configure these runtime values:
 
 - `RUNPOD_SSH_PUBLIC_KEY`: the public key only; this is not a secret.
 - `CLOUDFLARE_TUNNEL_TOKEN`: a RunPod secret reference, never a literal in Git.
+- `LIVE_CALL_CONTEXT_URL`: the deployed protected `live-call-context` function.
+- `TURN_ENGINE_API_KEY`: a RunPod secret reference matching the Edge Function's
+  shared key; it is sent only in the protected request header.
+- `LIVE_CALL_CONTEXT_POLL_SECONDS`: defaults to two seconds for the POC.
 - `VOICE_BRIDGE_GIT_REF`: a full commit SHA. Deliberately update it when a
   tested bridge release should be activated.
 - `VOICE_BRIDGE_SOURCE_REPO`: defaults to `/workspace/m-secondbrain-source`.

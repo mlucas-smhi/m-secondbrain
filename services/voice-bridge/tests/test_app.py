@@ -12,7 +12,9 @@ from bridge.app import (
     RollingAudioBuffer,
     conversation_initiation_payload,
     create_app,
+    live_call_context_update,
     mulaw_8khz_to_wav_24khz,
+    newer_live_sessions,
     outbound_twiml,
     parse_verifier_result,
     twilio_call_options,
@@ -204,6 +206,34 @@ class ElevenLabsInitiationTests(unittest.TestCase):
                 },
             },
         )
+
+    def test_supplies_provider_call_reference_when_available(self) -> None:
+        with patch.dict(os.environ, VALID_ENV, clear=True):
+            settings = Settings.from_env()
+        payload = conversation_initiation_payload(settings, "CA123")
+        self.assertEqual(payload["dynamic_variables"]["provider_call_ref"], "CA123")
+
+
+class LiveCallContextTests(unittest.TestCase):
+    def test_only_returns_sessions_newer_than_current_call(self) -> None:
+        context = {
+            "session": {"started_at": "2026-09-15T20:00:00+00:00"},
+            "other_live_sessions": [
+                {"session_id": "older", "started_at": "2026-09-15T19:59:00+00:00"},
+                {"session_id": "newer", "started_at": "2026-09-15T20:01:00+00:00"},
+            ],
+        }
+        self.assertEqual(
+            [session["session_id"] for session in newer_live_sessions(context)],
+            ["newer"],
+        )
+
+    def test_unverified_caller_is_not_named(self) -> None:
+        text = live_call_context_update(
+            {"identity_state": "withheld", "actor_ref": "person:secret"}
+        )
+        self.assertIn("identity is not verified", text)
+        self.assertNotIn("person:secret", text)
 
 
 class TwilioWebsocketValidationTests(unittest.TestCase):
