@@ -7,6 +7,19 @@ import {
 
 const WORKSPACE_ID = "00000000-0000-4000-8000-000000000001";
 
+async function fetchCall(
+  accountSid: string,
+  authToken: string,
+  callSid: string,
+): Promise<Record<string, unknown> | null> {
+  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls/${callSid}.json`;
+  const response = await fetch(endpoint, {
+    headers: { Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}` },
+  });
+  if (!response.ok) return null;
+  return await response.json() as Record<string, unknown>;
+}
+
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json(405, { error: "method_not_allowed" });
 
@@ -39,8 +52,23 @@ Deno.serve(async (request) => {
 
   const providerEventId = twilioEventId(form);
   const callSid = form.get("CallSid")?.trim();
-  const status = form.get("CallStatus")?.trim();
-  const direction = form.get("Direction")?.trim();
+  const streamEvent = form.get("StreamEvent")?.trim();
+  let status = form.get("CallStatus")?.trim();
+  let direction = form.get("Direction")?.trim();
+  let from = form.get("From")?.trim() ?? "";
+  let to = form.get("To")?.trim() ?? "";
+  if (callSid && streamEvent) {
+    const call = await fetchCall(accountSid, authToken, callSid);
+    if (!call) return json(502, { error: "twilio_call_not_resolved" });
+    direction = String(call.direction ?? "").trim();
+    from = String(call.from ?? "").trim();
+    to = String(call.to ?? "").trim();
+    status = streamEvent === "stream-started"
+      ? "in-progress"
+      : streamEvent === "stream-stopped"
+      ? "completed"
+      : "failed";
+  }
   const sequenceRaw = form.get("SequenceNumber")?.trim();
   const sequenceNumber = sequenceRaw === undefined || sequenceRaw === null || sequenceRaw === ""
     ? null
@@ -67,10 +95,12 @@ Deno.serve(async (request) => {
       p_direction: direction,
       p_occurred_at: occurredAt,
       p_sequence_number: sequenceNumber,
-      p_from_phone_ref: await protectedPhoneRef(form.get("From") ?? "", phoneHashKey),
-      p_to_phone_ref: await protectedPhoneRef(form.get("To") ?? "", phoneHashKey),
+      p_from_phone_ref: await protectedPhoneRef(from, phoneHashKey),
+      p_to_phone_ref: await protectedPhoneRef(to, phoneHashKey),
       p_data: {
         callback_source: form.get("CallbackSource"),
+        stream_event: streamEvent,
+        stream_sid: form.get("StreamSid"),
         stir_status: form.get("StirStatus"),
       },
     },

@@ -164,7 +164,10 @@ class InboundTwimlTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status, 403)
 
     async def test_creates_an_isolated_stream(self) -> None:
-        with patch.dict(os.environ, VALID_ENV, clear=True):
+        env = VALID_ENV | {
+            "TWILIO_STATUS_CALLBACK_URL": "https://example.supabase.co/functions/v1/twilio-call-status"
+        }
+        with patch.dict(os.environ, env, clear=True):
             app = create_app(Settings.from_env())
         form = {"CallSid": "CA-test"}
         signature = RequestValidator("twilio-secret").compute_signature(
@@ -177,9 +180,13 @@ class InboundTwimlTests(unittest.IsolatedAsyncioTestCase):
                 headers={"X-Twilio-Signature": signature},
             )
             self.assertEqual(response.status, 200)
+            body = await response.text()
+            self.assertIn('url="wss://bridge.example.com/media-stream"', body)
             self.assertIn(
-                'url="wss://bridge.example.com/media-stream"', await response.text()
+                'statusCallback="https://example.supabase.co/functions/v1/twilio-call-status"',
+                body,
             )
+            self.assertIn('statusCallbackMethod="POST"', body)
 
 
 class ElevenLabsInitiationTests(unittest.TestCase):

@@ -48,6 +48,25 @@ Deno.test("rejects flight packets without currency", () => {
   assertThrows(() => validateCanonicalFlightResults(result), Error, "missing an ISO currency");
 });
 
+Deno.test("uses the requested currency when RouteStack omits currency fields", () => {
+  const result = normalizeRouteStackFlightResults({
+    result: [{
+      showOurprice: 165.39,
+      flights: [{
+        flightCode: "UA",
+        flightNumber: "1",
+        departure: "HOU",
+        arrival: "NYC",
+        departureTime: "2026-10-14T10:00:00Z",
+        arrivalTime: "2026-10-14T13:00:00Z",
+      }],
+    }],
+  }, 12, "usd");
+
+  assertEquals(result.offers[0].total_currency, "USD");
+  validateCanonicalFlightResults(result);
+});
+
 Deno.test("keeps RouteStack execution handles only in protected refs", () => {
   const payload = { result: [{ fareSourceCode: "opaque", sessionId: "session" }] };
   const refs = protectedRouteStackOfferRefs(payload);

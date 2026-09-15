@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hmac
+import html
 import io
 import json
 import logging
@@ -185,12 +186,18 @@ class Settings:
         return cls(**values)
 
 
-def outbound_twiml(public_base_url: str) -> str:
+def outbound_twiml(public_base_url: str, status_callback_url: str = "") -> str:
     websocket_url = urljoin(public_base_url, "media-stream").replace("https://", "wss://", 1)
+    callback_attributes = ""
+    if status_callback_url:
+        callback_attributes = (
+            f' statusCallback="{html.escape(status_callback_url, quote=True)}"'
+            ' statusCallbackMethod="POST"'
+        )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<Response><Connect>"
-        f'<Stream url="{websocket_url}" />'
+        f'<Stream url="{websocket_url}"{callback_attributes} />'
         "</Connect></Response>"
     )
 
@@ -305,7 +312,12 @@ async def twiml_inbound(request: web.Request) -> web.Response:
     form = {key: str(value) for key, value in form_data.items()}
     if not validate_twilio_request(settings, request, form):
         return web.Response(status=403, text="forbidden")
-    return web.Response(text=outbound_twiml(settings.public_base_url), content_type="text/xml")
+    return web.Response(
+        text=outbound_twiml(
+            settings.public_base_url, settings.twilio_status_callback_url
+        ),
+        content_type="text/xml",
+    )
 
 
 async def verification_snippet(request: web.Request) -> web.Response:

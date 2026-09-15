@@ -154,10 +154,21 @@ export function normalizeDuffelFlightResults(payload: unknown, maxOffers = 12): 
   return base("duffel", offers, rawOffers.length, maxOffers);
 }
 
-export function normalizeRouteStackFlightResults(payload: unknown, maxOffers = 12): CanonicalFlightResults {
+export function normalizeRouteStackFlightResults(
+  payload: unknown,
+  maxOffers = 12,
+  fallbackCurrency?: string,
+): CanonicalFlightResults {
   const root = object(payload);
-  const rawOffers = array(root.result ?? object(root.data).result);
-  const declaredCount = number(root.count) ?? rawOffers.length;
+  const data = object(root.data);
+  const resultEnvelope = object(root.result ?? data.result);
+  const rawOffers = array(
+    resultEnvelope.result ?? resultEnvelope.offers ?? root.result ?? data.result,
+  );
+  const declaredCount = number(resultEnvelope.count ?? root.count ?? data.count) ?? rawOffers.length;
+  const responseCurrency = text(
+    resultEnvelope.currency ?? root.currency ?? data.currency ?? fallbackCurrency,
+  )?.toUpperCase() ?? null;
   const offers = rawOffers.slice(0, maxOffers).map((value, index): CanonicalFlightOffer => {
     const offer = object(value);
     const flights = array(offer.flights).map(object);
@@ -166,7 +177,7 @@ export function normalizeRouteStackFlightResults(payload: unknown, maxOffers = 1
     return {
       offer_key: `routestack:${index + 1}`,
       total_amount: number(offer.showOurprice ?? offer.ourprice ?? offer.totalFare ?? amounts.totalFare),
-      total_currency: text(offer.currency ?? amounts.currency),
+      total_currency: text(offer.currency ?? amounts.currency)?.toUpperCase() ?? responseCurrency,
       duration_minutes: flights.reduce<number | null>((sum, flight) => {
         const minutes = durationMinutes(flight.triptime);
         return minutes === null ? sum : (sum ?? 0) + minutes;

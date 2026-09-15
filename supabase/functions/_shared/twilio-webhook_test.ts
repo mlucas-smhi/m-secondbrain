@@ -47,3 +47,15 @@ Deno.test("event IDs prefer Twilio sequence numbers", () => {
   assert(twilioEventId(sequenced) === "CA123:2", "sequence event ID is incorrect");
   assert(twilioEventId(new URLSearchParams()) === null, "invalid event was accepted");
 });
+
+Deno.test("stream event IDs include the stream SID and event", () => {
+  const started = new URLSearchParams({
+    CallSid: "CA123",
+    StreamSid: "MZ123",
+    StreamEvent: "stream-started",
+  });
+  assert(
+    twilioEventId(started) === "CA123:MZ123:stream-started",
+    "stream event ID is incorrect",
+  );
+});

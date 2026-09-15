@@ -13,9 +13,10 @@ Deno.test("RouteStack maps the canonical one-way flight contract", () => {
     passengers: [{ type: "adult" }, { age: 12 }],
     cabin_class: "premium_economy",
     max_connections: 1,
+    currency: "EUR",
   }), {
     origin: "HOU", destination: "NYC", departureDate: "2026-10-14",
-    adults: 1, children: 1, childAges: [12], cabin: "Premium Economy",
+    adults: 1, children: 1, childAges: [12], cabin: "Premium Economy", currency: "EUR",
     tripType: "ONE_WAY", maxConnections: 1,
   });
 });
@@ -30,6 +31,7 @@ Deno.test("RouteStack maps a canonical return date", () => {
   });
   assertEquals(payload.tripType, "ROUND_TRIP");
   assertEquals(payload.returnDate, "2026-10-18");
+  assertEquals(payload.currency, "USD");
 });
 
 Deno.test("RouteStack rejects unsupported multi-city mapping", () => {

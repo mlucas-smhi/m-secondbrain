@@ -19,6 +19,9 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - When `TWILIO_STATUS_CALLBACK_URL` is configured, outbound calls request all
   four Twilio progress callbacks so the durable live-call registry can track
   ringing, active, and terminal state without polling.
+- Inbound streams send signed `stream-started` and `stream-stopped` callbacks
+  to the same URL. The callback service resolves the Twilio Call resource so
+  inbound sessions are visible while they are live, not only after hangup.
 - `POST /verification/snippet` returns a recent caller-audio window only while
   a call is active. It requires `X-Bridge-Key` and `VOICE_FORK_MODE=buffer`.
 - `GET` or `POST /verification/evaluate` converts a transient caller window to mono

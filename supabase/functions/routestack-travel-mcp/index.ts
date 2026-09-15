@@ -81,6 +81,7 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
       passengers: z.array(passengerSchema).min(1).max(9),
       cabin_class: z.enum(["economy", "premium_economy", "business", "first"]).optional(),
       max_connections: z.number().int().min(0).max(3).optional(),
+      currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).optional(),
       tool_run_id: z.uuid().optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
@@ -93,7 +94,7 @@ function buildServer(baseUrl: string, apiKey: string, apiSecret: string): McpSer
         "/mcp/flight/search",
         routeStackFlightSearchPayload(input),
       );
-      const normalized = normalizeRouteStackFlightResults(payload);
+      const normalized = normalizeRouteStackFlightResults(payload, 12, input.currency ?? "USD");
       validateCanonicalFlightResults(normalized);
       const resultRef = await storeProtectedFlightResult(
         input.tool_run_id, "routestack", normalized, protectedRouteStackOfferRefs(payload),

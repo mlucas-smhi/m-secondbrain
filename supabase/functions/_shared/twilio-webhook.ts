@@ -67,8 +67,10 @@ export async function protectedPhoneRef(value: string, hashKey: string): Promise
 
 export function twilioEventId(form: URLSearchParams): string | null {
   const callSid = form.get("CallSid")?.trim();
-  const status = form.get("CallStatus")?.trim();
+  const status = form.get("CallStatus")?.trim() || form.get("StreamEvent")?.trim();
   if (!callSid || !status) return null;
+  const streamSid = form.get("StreamSid")?.trim();
+  if (streamSid) return `${callSid}:${streamSid}:${status}`;
   const discriminator = form.get("SequenceNumber")?.trim() ||
     form.get("Timestamp")?.trim() || status;
   return `${callSid}:${discriminator}`;

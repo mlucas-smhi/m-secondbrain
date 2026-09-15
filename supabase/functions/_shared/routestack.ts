@@ -5,6 +5,7 @@ export type CanonicalFlightSearchInput = {
   passengers: Array<{ type: "adult" } | { age: number }>;
   cabin_class?: "economy" | "premium_economy" | "business" | "first";
   max_connections?: number;
+  currency?: string;
 };
 
 export type RouteStackHotelSearchInput = {
@@ -105,6 +106,7 @@ export function routeStackFlightSearchPayload(input: CanonicalFlightSearchInput)
     children: childAges.length,
     childAges,
     cabin,
+    currency: input.currency ?? "USD",
     tripType: inbound ? "ROUND_TRIP" : "ONE_WAY",
     ...(inbound ? { returnDate: inbound.departure_date } : {}),
     ...(input.max_connections === undefined ? {} : { maxConnections: input.max_connections }),
