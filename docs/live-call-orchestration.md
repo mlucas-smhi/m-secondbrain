@@ -159,3 +159,11 @@ reported as a completed connection.
 
 No automatic interruption or production patch-in is enabled until the complete
 failure matrix passes.
+
+## Deferred performance work
+
+- Instrument the bridge latency waterfall from the caller's final inbound audio
+  frame through ElevenLabs turn-finalization, first agent response, and first
+  outbound audio frame sent to Twilio.
+- Use those measurements to separate endpointing, model, network, and bridge
+  compute costs before changing pod size.

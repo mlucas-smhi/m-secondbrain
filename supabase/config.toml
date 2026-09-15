@@ -10,6 +10,9 @@ verify_jwt = false
 [functions.memory-context]
 verify_jwt = false
 
+[functions.live-call-context]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

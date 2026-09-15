@@ -9,6 +9,9 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - `GET /health` reports process health.
 - `POST /calls/poc` originates an outbound call to the single allow-listed
   destination. It requires `X-Bridge-Key`.
+- `POST /twiml/inbound` accepts a Twilio-signed inbound voice webhook and gives
+  that caller a separate media stream and ElevenLabs conversation. Pointing a
+  production number at this route is a separate activation step.
 - `POST /twiml/outbound` validates Twilio's request signature and returns TwiML
   for a bidirectional Media Stream.
 - `GET /media-stream` relays Twilio mu-law/8 kHz frames to the ElevenLabs agent

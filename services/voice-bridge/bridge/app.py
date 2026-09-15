@@ -298,6 +298,16 @@ async def twiml_outbound(request: web.Request) -> web.Response:
     return web.Response(text=outbound_twiml(settings.public_base_url), content_type="text/xml")
 
 
+async def twiml_inbound(request: web.Request) -> web.Response:
+    """Accept one signed inbound call and give it an isolated media session."""
+    settings: Settings = request.app["settings"]
+    form_data = await request.post()
+    form = {key: str(value) for key, value in form_data.items()}
+    if not validate_twilio_request(settings, request, form):
+        return web.Response(status=403, text="forbidden")
+    return web.Response(text=outbound_twiml(settings.public_base_url), content_type="text/xml")
+
+
 async def verification_snippet(request: web.Request) -> web.Response:
     """Return recent caller audio while a stream is active; never persist it."""
     settings: Settings = request.app["settings"]
@@ -519,6 +529,7 @@ def create_app(settings: Settings) -> web.Application:
         [
             web.get("/health", health),
             web.post("/calls/poc", originate_call),
+            web.post("/twiml/inbound", twiml_inbound),
             web.post("/twiml/outbound", twiml_outbound),
             web.post("/verification/snippet", verification_snippet),
             web.get("/verification/evaluate", evaluate_speaker),

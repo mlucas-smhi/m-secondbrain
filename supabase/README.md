@@ -360,6 +360,24 @@ The HTTP response also includes `replayed`. Integration workflows must only
 perform downstream side effects, such as placing an outbound call, when that
 value is `false`.
 
+## Live call context
+
+`functions/live-call-context` gives the bridge or 11 a narrow view of concurrent
+sessions without granting Twilio control. Send the current Twilio Call SID with
+the standard `X-Turn-Engine-Key` header:
+
+```json
+{
+  "provider_call_ref": "CA..."
+}
+```
+
+The response identifies the current session and reports other ringing, active,
+held, or merging sessions in the same workspace. An other participant's
+`actor_ref` is returned only after that participant has reached the `verified`
+identity state; otherwise identity is explicitly `withheld`. This endpoint does
+not interrupt, hold, merge, or disclose a caller by itself.
+
 Example first-delivery response:
 
 ```json
