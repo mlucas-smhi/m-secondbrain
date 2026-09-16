@@ -50,6 +50,12 @@ python -m venv .venv
 OPENAI_API_KEY=... OPENAI_WEBHOOK_SECRET=... .venv/bin/python -m live_poc.app
 ```
 
+Build the deployment image from this directory:
+
+```bash
+docker build -t gpt-live-poc:local .
+```
+
 Health check:
 
 ```bash
