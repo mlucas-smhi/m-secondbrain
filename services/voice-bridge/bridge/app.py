@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
+from uuid import UUID
 
 from aiohttp import ClientConnectionError, ClientSession, WSMsgType, web
 from twilio.request_validator import RequestValidator
@@ -28,6 +29,8 @@ VERIFIER_MODES = {"disabled", "observe"}
 CONFERENCE_MERGE_MODES = {"disabled", "poc"}
 VERDICTS = {"MATCH", "NO_MATCH", "INCONCLUSIVE"}
 MULAW_BYTES_PER_SECOND = 8_000
+TWILIO_CALL_SID_PATTERN = re.compile(r"^CA[0-9a-fA-F]{32}$")
+CONFERENCE_ROOM_PATTERN = re.compile(r"^merge-[0-9a-f-]{36}$")
 
 
 class RollingAudioBuffer:
@@ -120,6 +123,7 @@ class Settings:
     bridge_api_key: str
     twilio_status_callback_url: str = ""
     live_call_context_url: str = ""
+    live_call_merge_url: str = ""
     turn_engine_api_key: str = ""
     live_call_context_poll_seconds: float = 2.0
     conference_merge_mode: str = "disabled"
@@ -167,6 +171,14 @@ class Settings:
         values["live_call_context_url"] = os.getenv(
             "LIVE_CALL_CONTEXT_URL", ""
         ).strip()
+        values["live_call_merge_url"] = os.getenv(
+            "LIVE_CALL_MERGE_URL", ""
+        ).strip()
+        if not values["live_call_merge_url"] and values["live_call_context_url"]:
+            values["live_call_merge_url"] = (
+                values["live_call_context_url"].rsplit("/", 1)[0]
+                + "/live-call-merge"
+            )
         values["turn_engine_api_key"] = os.getenv("TURN_ENGINE_API_KEY", "").strip()
         if bool(values["live_call_context_url"]) != bool(values["turn_engine_api_key"]):
             raise RuntimeError(
@@ -258,6 +270,90 @@ def outbound_twiml(
     )
 
 
+def conference_participant_twiml(room_ref: str, label: str) -> str:
+    if not CONFERENCE_ROOM_PATTERN.fullmatch(room_ref):
+        raise ValueError("invalid conference room reference")
+    if label not in {"owner", "guest"}:
+        raise ValueError("invalid conference participant label")
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response><Dial>"
+        '<Conference beep="false" endConferenceOnExit="false" '
+        f'participantLabel="{label}" startConferenceOnEnter="true">'
+        f"{html.escape(room_ref)}</Conference>"
+        "</Dial></Response>"
+    )
+
+
+class ConferenceExecutionError(RuntimeError):
+    def __init__(self, phase: str, agent_call_ref: str | None = None) -> None:
+        super().__init__(phase)
+        self.phase = phase
+        self.agent_call_ref = agent_call_ref
+
+
+def perform_conference_merge(settings: Settings, plan: dict[str, Any]) -> str:
+    room_ref = str(plan.get("room_ref", ""))
+    requesting_call_ref = str(plan.get("requesting_provider_call_ref", ""))
+    target_call_ref = str(plan.get("target_provider_call_ref", ""))
+    if not CONFERENCE_ROOM_PATTERN.fullmatch(room_ref):
+        raise ConferenceExecutionError("invalid_room_ref")
+    if not TWILIO_CALL_SID_PATTERN.fullmatch(requesting_call_ref):
+        raise ConferenceExecutionError("invalid_requesting_call_ref")
+    if not TWILIO_CALL_SID_PATTERN.fullmatch(target_call_ref):
+        raise ConferenceExecutionError("invalid_target_call_ref")
+
+    client = TwilioClient(settings.twilio_account_sid, settings.twilio_auth_token)
+    try:
+        requesting = client.calls(requesting_call_ref).fetch()
+        target = client.calls(target_call_ref).fetch()
+    except Exception as error:
+        raise ConferenceExecutionError("call_preflight_failed") from error
+    if requesting.status != "in-progress" or target.status != "in-progress":
+        raise ConferenceExecutionError("call_not_in_progress")
+
+    agent_call_ref: str | None = None
+    try:
+        agent = client.conferences(room_ref).participants.create(
+            to=f"app:{settings.twilio_conference_app_sid}",
+            from_=settings.twilio_from_number,
+            label="elevenlabs-agent",
+            beep=False,
+            start_conference_on_enter=True,
+            end_conference_on_exit=False,
+        )
+        agent_call_ref = str(agent.call_sid)
+        if not TWILIO_CALL_SID_PATTERN.fullmatch(agent_call_ref):
+            raise ConferenceExecutionError("invalid_agent_call_ref", agent_call_ref)
+        client.calls(target_call_ref).update(
+            twiml=conference_participant_twiml(room_ref, "guest")
+        )
+        client.calls(requesting_call_ref).update(
+            twiml=conference_participant_twiml(room_ref, "owner")
+        )
+    except ConferenceExecutionError:
+        raise
+    except Exception as error:
+        raise ConferenceExecutionError("twilio_execution_failed", agent_call_ref) from error
+    return agent_call_ref
+
+
+async def merge_control_request(
+    settings: Settings, session: ClientSession, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    if not settings.live_call_merge_url or not settings.turn_engine_api_key:
+        return 503, {"error": "merge_control_unconfigured"}
+    async with session.post(
+        settings.live_call_merge_url,
+        json=payload,
+        headers={"X-Turn-Engine-Key": settings.turn_engine_api_key},
+        timeout=10,
+    ) as response:
+        try:
+            body = await response.json()
+        except Exception:
+            body = {"error": "invalid_merge_control_response"}
+        return response.status, body
 def twilio_call_options(settings: Settings, destination: str) -> dict[str, Any]:
     options: dict[str, Any] = {
         "to": destination,
@@ -486,6 +582,114 @@ async def twiml_conference_agent(request: web.Request) -> web.Response:
             {"session_role": "conference_agent"},
         ),
         content_type="text/xml",
+    )
+
+
+async def execute_conference_merge(request: web.Request) -> web.Response:
+    """Execute one durably approved merge; never accepts raw target Call SIDs."""
+    settings: Settings = request.app["settings"]
+    if not hmac.compare_digest(request.headers.get("X-Bridge-Key", ""), settings.bridge_api_key):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    if settings.conference_merge_mode != "poc":
+        return web.json_response({"error": "conference_merge_disabled"}, status=409)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    merge_request_id = str(body.get("merge_request_id", "")).strip()
+    provider_call_ref = str(body.get("provider_call_ref", "")).strip()
+    try:
+        UUID(merge_request_id)
+    except ValueError:
+        return web.json_response({"error": "invalid_merge_request_id"}, status=400)
+    if not TWILIO_CALL_SID_PATTERN.fullmatch(provider_call_ref):
+        return web.json_response({"error": "invalid_provider_call_ref"}, status=400)
+
+    async with ClientSession() as session:
+        claim_status, claim_body = await merge_control_request(
+            settings,
+            session,
+            {
+                "action": "claim_execution",
+                "merge_request_id": merge_request_id,
+                "provider_call_ref": provider_call_ref,
+            },
+        )
+        if claim_status != 200:
+            return web.json_response(
+                {"error": "merge_claim_failed"}, status=claim_status
+            )
+        plan = claim_body.get("merge_request")
+        if not isinstance(plan, dict):
+            return web.json_response({"error": "invalid_merge_plan"}, status=502)
+        merge_record = plan.get("merge_request")
+        if not isinstance(merge_record, dict):
+            return web.json_response({"error": "invalid_merge_plan"}, status=502)
+        if plan.get("replayed"):
+            if merge_record.get("status") == "joined":
+                return web.json_response(
+                    {
+                        "status": "joined",
+                        "merge_request_id": merge_request_id,
+                        "replayed": True,
+                    }
+                )
+            return web.json_response({"error": "merge_already_executing"}, status=409)
+
+        try:
+            agent_call_ref = await asyncio.to_thread(
+                perform_conference_merge, settings, plan
+            )
+        except ConferenceExecutionError as error:
+            await merge_control_request(
+                settings,
+                session,
+                {
+                    "action": "complete_execution",
+                    "merge_request_id": merge_request_id,
+                    "provider_call_ref": provider_call_ref,
+                    "succeeded": False,
+                    "agent_provider_call_ref": error.agent_call_ref,
+                    "failure_code": error.phase,
+                    "execution_evidence": {"provider": "twilio", "phase": error.phase},
+                },
+            )
+            LOG.error(
+                "conference_merge_failed merge_request_id=%s phase=%s",
+                merge_request_id,
+                error.phase,
+            )
+            return web.json_response({"error": "conference_merge_failed"}, status=502)
+
+        complete_status, _ = await merge_control_request(
+            settings,
+            session,
+            {
+                "action": "complete_execution",
+                "merge_request_id": merge_request_id,
+                "provider_call_ref": provider_call_ref,
+                "succeeded": True,
+                "agent_provider_call_ref": agent_call_ref,
+                "execution_evidence": {
+                    "provider": "twilio",
+                    "human_legs_redirected": 2,
+                    "agent_leg_created": True,
+                },
+            },
+        )
+        if complete_status != 200:
+            LOG.error(
+                "conference_merge_persistence_failed merge_request_id=%s",
+                merge_request_id,
+            )
+            return web.json_response({"error": "merge_joined_unconfirmed"}, status=502)
+    return web.json_response(
+        {
+            "status": "joined",
+            "merge_request_id": merge_request_id,
+            "agent_call_ref": agent_call_ref,
+            "replayed": False,
+        }
     )
 
 
@@ -733,6 +937,7 @@ def create_app(settings: Settings) -> web.Application:
             web.post("/calls/poc", originate_call),
             web.post("/twiml/inbound", twiml_inbound),
             web.post("/twiml/conference-agent", twiml_conference_agent),
+            web.post("/conference/execute", execute_conference_merge),
             web.post("/twiml/outbound", twiml_outbound),
             web.post("/verification/snippet", verification_snippet),
             web.get("/verification/evaluate", evaluate_speaker),

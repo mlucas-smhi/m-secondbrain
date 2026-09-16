@@ -3,6 +3,7 @@ import base64
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+from unittest.mock import MagicMock
 
 from twilio.request_validator import RequestValidator
 from aiohttp.test_utils import TestClient, TestServer
@@ -11,11 +12,13 @@ from bridge.app import (
     Settings,
     RollingAudioBuffer,
     conversation_initiation_payload,
+    conference_participant_twiml,
     create_app,
     live_call_context_update,
     mulaw_8khz_to_wav_24khz,
     newer_live_sessions,
     outbound_twiml,
+    perform_conference_merge,
     parse_verifier_result,
     twilio_call_options,
     validate_twilio_websocket_request,
@@ -55,6 +58,18 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(
             settings.twilio_status_callback_url,
             "https://example.supabase.co/functions/v1/twilio-call-status",
+        )
+
+    def test_derives_live_call_merge_url_from_context_url(self) -> None:
+        env = VALID_ENV | {
+            "LIVE_CALL_CONTEXT_URL": "https://example.supabase.co/functions/v1/live-call-context",
+            "TURN_ENGINE_API_KEY": "turn-secret",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings.from_env()
+        self.assertEqual(
+            settings.live_call_merge_url,
+            "https://example.supabase.co/functions/v1/live-call-merge",
         )
 
     def test_missing_secret_fails_closed(self) -> None:
@@ -161,6 +176,63 @@ class TwimlTests(unittest.TestCase):
             ["initiated", "ringing", "answered", "completed"],
         )
         self.assertEqual(options["status_callback_method"], "POST")
+
+    def test_conference_twiml_is_non_recording_and_labeled(self) -> None:
+        room = "merge-11111111-1111-4111-8111-111111111111"
+        result = conference_participant_twiml(room, "owner")
+        self.assertIn(f">{room}</Conference>", result)
+        self.assertIn('participantLabel="owner"', result)
+        self.assertIn('beep="false"', result)
+        self.assertNotIn("record=", result)
+
+
+class ConferenceExecutionTests(unittest.TestCase):
+    def test_preflights_creates_agent_then_redirects_human_legs(self) -> None:
+        env = VALID_ENV | {
+            "CONFERENCE_MERGE_MODE": "poc",
+            "TWILIO_CONFERENCE_APP_SID": "AP" + "b" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = Settings.from_env()
+        requesting_sid = "CA" + "1" * 32
+        target_sid = "CA" + "2" * 32
+        agent_sid = "CA" + "3" * 32
+        room = "merge-11111111-1111-4111-8111-111111111111"
+        client = MagicMock()
+        requesting_call = MagicMock()
+        requesting_call.fetch.return_value.status = "in-progress"
+        target_call = MagicMock()
+        target_call.fetch.return_value.status = "in-progress"
+        client.calls.side_effect = lambda sid: {
+            requesting_sid: requesting_call,
+            target_sid: target_call,
+        }[sid]
+        participant = MagicMock()
+        participant.call_sid = agent_sid
+        client.conferences.return_value.participants.create.return_value = participant
+
+        with patch("bridge.app.TwilioClient", return_value=client):
+            result = perform_conference_merge(
+                settings,
+                {
+                    "room_ref": room,
+                    "requesting_provider_call_ref": requesting_sid,
+                    "target_provider_call_ref": target_sid,
+                },
+            )
+
+        self.assertEqual(result, agent_sid)
+        client.conferences.assert_called_once_with(room)
+        client.conferences.return_value.participants.create.assert_called_once_with(
+            to="app:" + "AP" + "b" * 32,
+            from_="+15550000001",
+            label="elevenlabs-agent",
+            beep=False,
+            start_conference_on_enter=True,
+            end_conference_on_exit=False,
+        )
+        target_call.update.assert_called_once()
+        requesting_call.update.assert_called_once()
 
 
 class InboundTwimlTests(unittest.IsolatedAsyncioTestCase):

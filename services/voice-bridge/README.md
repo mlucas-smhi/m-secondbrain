@@ -15,6 +15,11 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - `POST /twiml/conference-agent` is the signed TwiML App target for 11's
   dedicated conference participant leg. It returns no stream unless
   `CONFERENCE_MERGE_MODE=poc` and a valid `TWILIO_CONFERENCE_APP_SID` are set.
+- `POST /conference/execute` requires `X-Bridge-Key`, accepts only an approved
+  merge-request ID bound to the current Twilio Call SID, creates 11's dedicated
+  TwiML App leg, and redirects the two approved human legs into the same
+  non-PII conference room. Raw target Call SIDs are never accepted from the
+  agent.
 - Each conversation receives its Twilio Call SID as the `provider_call_ref`
   dynamic variable. When live-call context is configured, the bridge watches
   the protected registry and sends a non-interrupting ElevenLabs contextual
@@ -113,11 +118,14 @@ Configure these runtime values:
 - `RUNPOD_SSH_PUBLIC_KEY`: the public key only; this is not a secret.
 - `CLOUDFLARE_TUNNEL_TOKEN`: a RunPod secret reference, never a literal in Git.
 - `LIVE_CALL_CONTEXT_URL`: the deployed protected `live-call-context` function.
+- `LIVE_CALL_MERGE_URL`: the deployed protected `live-call-merge` function. If
+  omitted, it is derived from `LIVE_CALL_CONTEXT_URL` on the same Functions
+  origin.
 - `TURN_ENGINE_API_KEY`: a RunPod secret reference matching the Edge Function's
   shared key; it is sent only in the protected request header.
 - `LIVE_CALL_CONTEXT_POLL_SECONDS`: defaults to two seconds for the POC.
-- `CONFERENCE_MERGE_MODE`: defaults to `disabled`; `poc` enables only the
-  dedicated conference-agent TwiML route, not human-leg redirects.
+- `CONFERENCE_MERGE_MODE`: defaults to `disabled`; `poc` enables the dedicated
+  conference-agent TwiML route and the approval-bound execution endpoint.
 - `TWILIO_CONFERENCE_APP_SID`: required in `poc` mode and never inferred from
   caller input.
 - `VOICE_BRIDGE_GIT_REF`: a full commit SHA. Deliberately update it when a

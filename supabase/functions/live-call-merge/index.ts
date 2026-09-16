@@ -19,6 +19,10 @@ type MergeRequest = {
   approved?: unknown;
   actor_ref?: unknown;
   approval_evidence?: unknown;
+  succeeded?: unknown;
+  agent_provider_call_ref?: unknown;
+  failure_code?: unknown;
+  execution_evidence?: unknown;
 };
 
 Deno.serve(async (request) => {
@@ -82,6 +86,51 @@ Deno.serve(async (request) => {
       p_actor_ref: body.actor_ref.trim(),
       p_approval_evidence: body.approval_evidence ?? {},
     };
+  } else if (body.action === "claim_execution") {
+    if (typeof body.merge_request_id !== "string" ||
+      !UUID_PATTERN.test(body.merge_request_id)) {
+      return json(400, { error: "invalid_merge_request_id" });
+    }
+    rpc = "claim_live_call_merge_execution";
+    params = {
+      p_workspace_id: WORKSPACE_ID,
+      p_merge_request_id: body.merge_request_id,
+      p_requesting_provider_call_ref: body.provider_call_ref.trim(),
+    };
+  } else if (body.action === "complete_execution") {
+    if (typeof body.merge_request_id !== "string" ||
+      !UUID_PATTERN.test(body.merge_request_id)) {
+      return json(400, { error: "invalid_merge_request_id" });
+    }
+    if (typeof body.succeeded !== "boolean") {
+      return json(400, { error: "succeeded_must_be_boolean" });
+    }
+    if (body.agent_provider_call_ref !== undefined &&
+      body.agent_provider_call_ref !== null &&
+      !validCallId(body.agent_provider_call_ref)) {
+      return json(400, { error: "invalid_agent_provider_call_ref" });
+    }
+    if (!body.succeeded && !validCallId(body.failure_code)) {
+      return json(400, { error: "failure_code_required" });
+    }
+    if (body.execution_evidence !== undefined &&
+      (body.execution_evidence === null || typeof body.execution_evidence !== "object" ||
+        Array.isArray(body.execution_evidence))) {
+      return json(400, { error: "invalid_execution_evidence" });
+    }
+    rpc = "complete_live_call_merge_execution";
+    params = {
+      p_workspace_id: WORKSPACE_ID,
+      p_merge_request_id: body.merge_request_id,
+      p_succeeded: body.succeeded,
+      p_agent_provider_call_ref: typeof body.agent_provider_call_ref === "string"
+        ? body.agent_provider_call_ref.trim()
+        : null,
+      p_failure_code: typeof body.failure_code === "string"
+        ? body.failure_code.trim().slice(0, 100)
+        : null,
+      p_execution_evidence: body.execution_evidence ?? {},
+    };
   } else {
     return json(400, { error: "invalid_action" });
   }
@@ -99,6 +148,8 @@ Deno.serve(async (request) => {
 
   return json(200, {
     merge_request: result,
-    execution: "disabled",
+    execution: body.action === "claim_execution" || body.action === "complete_execution"
+      ? "enabled"
+      : "available",
   });
 });
