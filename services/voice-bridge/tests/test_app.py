@@ -81,6 +81,12 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SPEAKER_VERIFIER_URL"):
                 Settings.from_env()
 
+    def test_conference_poc_requires_twiml_app(self) -> None:
+        env = VALID_ENV | {"CONFERENCE_MERGE_MODE": "poc"}
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "TWILIO_CONFERENCE_APP_SID"):
+                Settings.from_env()
+
 
 class RollingAudioBufferTests(unittest.TestCase):
     def test_keeps_only_configured_window(self) -> None:
@@ -189,6 +195,42 @@ class InboundTwimlTests(unittest.IsolatedAsyncioTestCase):
                 body,
             )
             self.assertIn('statusCallbackMethod="POST"', body)
+
+    async def test_conference_agent_is_disabled_by_default(self) -> None:
+        with patch.dict(os.environ, VALID_ENV, clear=True):
+            app = create_app(Settings.from_env())
+        form = {"CallSid": "CA-test"}
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "https://bridge.example.com/twiml/conference-agent", form
+        )
+        async with TestClient(TestServer(app)) as client:
+            response = await client.post(
+                "/twiml/conference-agent",
+                data=form,
+                headers={"X-Twilio-Signature": signature},
+            )
+            self.assertEqual(response.status, 409)
+
+    async def test_conference_agent_receives_dedicated_stream_role(self) -> None:
+        env = VALID_ENV | {
+            "CONFERENCE_MERGE_MODE": "poc",
+            "TWILIO_CONFERENCE_APP_SID": "AP" + "a" * 32,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            app = create_app(Settings.from_env())
+        form = {"CallSid": "CA-test"}
+        signature = RequestValidator("twilio-secret").compute_signature(
+            "https://bridge.example.com/twiml/conference-agent", form
+        )
+        async with TestClient(TestServer(app)) as client:
+            response = await client.post(
+                "/twiml/conference-agent",
+                data=form,
+                headers={"X-Twilio-Signature": signature},
+            )
+            self.assertEqual(response.status, 200)
+            body = await response.text()
+            self.assertIn('name="session_role" value="conference_agent"', body)
 
 
 class ElevenLabsInitiationTests(unittest.TestCase):

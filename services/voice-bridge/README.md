@@ -12,6 +12,9 @@ to `disabled`; no call audio is retained or sent to speaker verification.
 - `POST /twiml/inbound` accepts a Twilio-signed inbound voice webhook and gives
   that caller a separate media stream and ElevenLabs conversation. Pointing a
   production number at this route is a separate activation step.
+- `POST /twiml/conference-agent` is the signed TwiML App target for 11's
+  dedicated conference participant leg. It returns no stream unless
+  `CONFERENCE_MERGE_MODE=poc` and a valid `TWILIO_CONFERENCE_APP_SID` are set.
 - Each conversation receives its Twilio Call SID as the `provider_call_ref`
   dynamic variable. When live-call context is configured, the bridge watches
   the protected registry and sends a non-interrupting ElevenLabs contextual
@@ -113,6 +116,10 @@ Configure these runtime values:
 - `TURN_ENGINE_API_KEY`: a RunPod secret reference matching the Edge Function's
   shared key; it is sent only in the protected request header.
 - `LIVE_CALL_CONTEXT_POLL_SECONDS`: defaults to two seconds for the POC.
+- `CONFERENCE_MERGE_MODE`: defaults to `disabled`; `poc` enables only the
+  dedicated conference-agent TwiML route, not human-leg redirects.
+- `TWILIO_CONFERENCE_APP_SID`: required in `poc` mode and never inferred from
+  caller input.
 - `VOICE_BRIDGE_GIT_REF`: a full commit SHA. Deliberately update it when a
   tested bridge release should be activated.
 - `VOICE_BRIDGE_SOURCE_REPO`: defaults to `/workspace/m-secondbrain-source`.

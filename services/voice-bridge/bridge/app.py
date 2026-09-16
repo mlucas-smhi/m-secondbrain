@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import re
 import struct
 import wave
 from collections import deque
@@ -24,6 +25,7 @@ from twilio.rest import Client as TwilioClient
 LOG = logging.getLogger("voice_bridge")
 FORK_MODES = {"disabled", "count", "buffer"}
 VERIFIER_MODES = {"disabled", "observe"}
+CONFERENCE_MERGE_MODES = {"disabled", "poc"}
 VERDICTS = {"MATCH", "NO_MATCH", "INCONCLUSIVE"}
 MULAW_BYTES_PER_SECOND = 8_000
 
@@ -120,6 +122,8 @@ class Settings:
     live_call_context_url: str = ""
     turn_engine_api_key: str = ""
     live_call_context_poll_seconds: float = 2.0
+    conference_merge_mode: str = "disabled"
+    twilio_conference_app_sid: str = ""
     elevenlabs_agent_name: str = "11"
     elevenlabs_user_name: str = "Michael"
     elevenlabs_greeting: str = "Hello"
@@ -175,6 +179,23 @@ class Settings:
             raise RuntimeError(
                 "LIVE_CALL_CONTEXT_POLL_SECONDS must be between 0.5 and 30"
             )
+        conference_merge_mode = os.getenv(
+            "CONFERENCE_MERGE_MODE", "disabled"
+        ).strip().lower()
+        if conference_merge_mode not in CONFERENCE_MERGE_MODES:
+            raise RuntimeError(
+                f"CONFERENCE_MERGE_MODE must be one of {sorted(CONFERENCE_MERGE_MODES)}"
+            )
+        values["conference_merge_mode"] = conference_merge_mode
+        values["twilio_conference_app_sid"] = os.getenv(
+            "TWILIO_CONFERENCE_APP_SID", ""
+        ).strip()
+        if conference_merge_mode == "poc" and not re.fullmatch(
+            r"AP[0-9a-fA-F]{32}", values["twilio_conference_app_sid"]
+        ):
+            raise RuntimeError(
+                "TWILIO_CONFERENCE_APP_SID is required in conference POC mode"
+            )
         verifier_mode = os.getenv("VERIFIER_MODE", "disabled").strip().lower()
         if verifier_mode not in VERIFIER_MODES:
             raise RuntimeError(f"VERIFIER_MODE must be one of {sorted(VERIFIER_MODES)}")
@@ -205,7 +226,11 @@ class Settings:
         return cls(**values)
 
 
-def outbound_twiml(public_base_url: str, status_callback_url: str = "") -> str:
+def outbound_twiml(
+    public_base_url: str,
+    status_callback_url: str = "",
+    stream_parameters: dict[str, str] | None = None,
+) -> str:
     websocket_url = urljoin(public_base_url, "media-stream").replace("https://", "wss://", 1)
     callback_attributes = ""
     if status_callback_url:
@@ -213,10 +238,22 @@ def outbound_twiml(public_base_url: str, status_callback_url: str = "") -> str:
             f' statusCallback="{html.escape(status_callback_url, quote=True)}"'
             ' statusCallbackMethod="POST"'
         )
+    stream_body = ""
+    if stream_parameters:
+        stream_body = "".join(
+            f'<Parameter name="{html.escape(name, quote=True)}" '
+            f'value="{html.escape(value, quote=True)}" />'
+            for name, value in sorted(stream_parameters.items())
+        )
+    stream = (
+        f'<Stream url="{websocket_url}"{callback_attributes} />'
+        if not stream_body
+        else f'<Stream url="{websocket_url}"{callback_attributes}>{stream_body}</Stream>'
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<Response><Connect>"
-        f'<Stream url="{websocket_url}"{callback_attributes} />'
+        f"{stream}"
         "</Connect></Response>"
     )
 
@@ -428,6 +465,25 @@ async def twiml_inbound(request: web.Request) -> web.Response:
     return web.Response(
         text=outbound_twiml(
             settings.public_base_url, settings.twilio_status_callback_url
+        ),
+        content_type="text/xml",
+    )
+
+
+async def twiml_conference_agent(request: web.Request) -> web.Response:
+    """Give a TwiML App participant its own isolated ElevenLabs stream."""
+    settings: Settings = request.app["settings"]
+    form_data = await request.post()
+    form = {key: str(value) for key, value in form_data.items()}
+    if not validate_twilio_request(settings, request, form):
+        return web.Response(status=403, text="forbidden")
+    if settings.conference_merge_mode != "poc":
+        return web.Response(status=409, text="conference merge disabled")
+    return web.Response(
+        text=outbound_twiml(
+            settings.public_base_url,
+            settings.twilio_status_callback_url,
+            {"session_role": "conference_agent"},
         ),
         content_type="text/xml",
     )
@@ -676,6 +732,7 @@ def create_app(settings: Settings) -> web.Application:
             web.get("/health", health),
             web.post("/calls/poc", originate_call),
             web.post("/twiml/inbound", twiml_inbound),
+            web.post("/twiml/conference-agent", twiml_conference_agent),
             web.post("/twiml/outbound", twiml_outbound),
             web.post("/verification/snippet", verification_snippet),
             web.get("/verification/evaluate", evaluate_speaker),
