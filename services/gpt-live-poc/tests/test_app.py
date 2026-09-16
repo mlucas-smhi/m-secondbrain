@@ -84,7 +84,11 @@ class SessionPayloadTests(unittest.TestCase):
 
     def test_adds_only_read_memory_when_github_is_enabled(self) -> None:
         payload = live_session_payload(Settings("key", "secret", github_token="token"))
+        instructions = payload["session"]["instructions"]
         responses = payload["session"]["delegation"]["responses"]
+        self.assertIn("Delegation policy:", instructions)
+        self.assertIn("reference/preferences.md", instructions)
+        self.assertIn("reference/preferences.md", responses["instructions"])
         self.assertEqual(responses["tools"][0]["name"], "read_memory")
         self.assertFalse(responses["parallel_tool_calls"])
 
