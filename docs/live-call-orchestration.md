@@ -160,6 +160,20 @@ reported as a completed connection.
 No automatic interruption or production patch-in is enabled until the complete
 failure matrix passes.
 
+## Current implementation boundary
+
+The durable `live_call_merge_requests` state machine and protected
+`live-call-merge` endpoint implement offer, expiry, explicit approval or denial,
+session binding, and idempotent replay. The endpoint always returns
+`execution: disabled`: approval is durable evidence, not permission to claim a
+conference exists.
+
+The current Twilio calls run 11 inline through a bidirectional `<Stream>`.
+Redirecting those human call legs directly into `<Conference>` ends their
+existing ElevenLabs streams. Provider execution therefore remains disabled
+until 11 has a deliberate conference participant leg and join callbacks can
+confirm all three intended participants.
+
 ## Deferred performance work
 
 - Instrument the bridge latency waterfall from the caller's final inbound audio
