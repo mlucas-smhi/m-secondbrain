@@ -53,6 +53,14 @@ MEMORY_TOOL = {
 }
 
 
+def decode_github_content(encoded: str) -> bytes:
+    normalized = "".join(encoded.split())
+    try:
+        return base64.b64decode(normalized, validate=True)
+    except ValueError as error:
+        raise RuntimeError("invalid_github_content") from error
+
+
 @dataclass(frozen=True)
 class Settings:
     openai_api_key: str
@@ -149,7 +157,7 @@ async def read_github_memory(settings: Settings, path: str) -> dict[str, Any]:
 
     if payload.get("type") != "file" or payload.get("encoding") != "base64":
         raise RuntimeError("unsupported_github_content")
-    content = base64.b64decode(payload.get("content", ""), validate=True)
+    content = decode_github_content(str(payload.get("content", "")))
     if len(content) > MAX_MEMORY_BYTES:
         raise RuntimeError("memory_too_large")
     return {

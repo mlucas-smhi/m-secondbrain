@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from live_poc.app import (
     Settings,
+    decode_github_content,
     execute_memory_call,
     event_type,
     function_call_from_event,
@@ -52,6 +53,13 @@ class MemoryBoundaryTests(unittest.TestCase):
             with self.subTest(path=path):
                 with self.assertRaisesRegex(ValueError, "memory_path_not_allowed"):
                     validate_memory_path(path)
+
+    def test_decodes_github_base64_with_line_wrapping(self) -> None:
+        self.assertEqual(decode_github_content("aGVs\nbG8=\n"), b"hello")
+
+    def test_rejects_invalid_github_base64(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "invalid_github_content"):
+            decode_github_content("not-base64!")
 
 
 class IncomingEventTests(unittest.TestCase):
