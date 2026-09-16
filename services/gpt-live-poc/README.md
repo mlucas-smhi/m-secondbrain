@@ -78,6 +78,15 @@ Configure that URL as an OpenAI project webhook for incoming Live transport
 events. Route only the dedicated Twilio canary number to the OpenAI SIP URI;
 do not repoint the production ElevenLabs number.
 
+## Caller allowlist
+
+Before enabling GitHub memory, route the canary number's incoming-call webhook
+to `https://<control-host>/twilio/inbound` with HTTP POST. Configure
+`TWILIO_AUTH_TOKEN`, `ALLOWED_CALLER_NUMBER`, `PUBLIC_BASE_URL`, and
+`OPENAI_SIP_URI` in the container. The service verifies Twilio's request
+signature and returns the OpenAI SIP `<Dial>` only for the exact allowed E.164
+number. All other callers receive `<Reject>` and never see the SIP target.
+
 ## Tests
 
 ```bash

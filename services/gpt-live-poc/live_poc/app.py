@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import html
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ from typing import Any
 
 from aiohttp import ClientSession, web
 from openai import OpenAI
+from twilio.request_validator import RequestValidator
 from websockets.asyncio.client import connect
 
 
@@ -62,6 +64,10 @@ class Settings:
     github_token: str | None = None
     github_repository: str = "mlucas-smhi/m-secondbrain"
     github_ref: str = "main"
+    twilio_auth_token: str | None = None
+    allowed_caller_number: str | None = None
+    public_base_url: str | None = None
+    openai_sip_uri: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -84,11 +90,24 @@ class Settings:
                 "GITHUB_MEMORY_REPOSITORY", "mlucas-smhi/m-secondbrain"
             ).strip(),
             github_ref=os.getenv("GITHUB_MEMORY_REF", "main").strip(),
+            twilio_auth_token=os.getenv("TWILIO_AUTH_TOKEN") or None,
+            allowed_caller_number=os.getenv("ALLOWED_CALLER_NUMBER") or None,
+            public_base_url=os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/") or None,
+            openai_sip_uri=os.getenv("OPENAI_SIP_URI", "").strip() or None,
         )
 
     @property
     def github_memory_enabled(self) -> bool:
         return bool(self.github_token and self.github_repository and self.github_ref)
+
+    @property
+    def twilio_ingress_enabled(self) -> bool:
+        return bool(
+            self.twilio_auth_token
+            and self.allowed_caller_number
+            and self.public_base_url
+            and self.openai_sip_uri
+        )
 
 
 def validate_memory_path(path: str) -> str:
@@ -290,7 +309,44 @@ async def health(request: web.Request) -> web.Response:
             "memory_provider": (
                 "github-read-only" if settings.github_memory_enabled else "disabled"
             ),
+            "twilio_ingress": (
+                "caller-allowlist" if settings.twilio_ingress_enabled else "disabled"
+            ),
         }
+    )
+
+
+def inbound_twiml(settings: Settings, caller_number: str) -> str:
+    if caller_number != settings.allowed_caller_number:
+        return '<?xml version="1.0" encoding="UTF-8"?><Response><Reject reason="rejected"/></Response>'
+    action_url = f"{settings.public_base_url}/twilio/dial-result"
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response>"
+        f'<Dial action="{html.escape(action_url, quote=True)}" method="POST">'
+        f"<Sip>{html.escape(str(settings.openai_sip_uri))}</Sip>"
+        "</Dial>"
+        "</Response>"
+    )
+
+
+async def twilio_inbound(request: web.Request) -> web.Response:
+    settings: Settings = request.app["settings"]
+    if not settings.twilio_ingress_enabled:
+        return web.json_response({"error": "twilio_ingress_disabled"}, status=503)
+    form = await request.post()
+    signature = request.headers.get("X-Twilio-Signature", "")
+    webhook_url = f"{settings.public_base_url}/twilio/inbound"
+    validator = RequestValidator(str(settings.twilio_auth_token))
+    if not validator.validate(webhook_url, dict(form), signature):
+        LOG.warning("twilio_inbound_rejected reason=invalid_signature")
+        return web.json_response({"error": "invalid_signature"}, status=403)
+    caller = str(form.get("From", "")).strip()
+    allowed = caller == settings.allowed_caller_number
+    LOG.info("twilio_inbound_authorized allowed=%s", allowed)
+    return web.Response(
+        text=inbound_twiml(settings, caller),
+        content_type="application/xml",
     )
 
 
@@ -344,6 +400,7 @@ def create_app(settings: Settings) -> web.Application:
     app.add_routes(
         [
             web.get("/health", health),
+            web.post("/twilio/inbound", twilio_inbound),
             web.post("/twilio/dial-result", twilio_dial_result),
             web.post("/openai/webhook", openai_webhook),
         ]
