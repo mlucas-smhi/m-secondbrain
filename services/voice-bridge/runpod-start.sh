@@ -13,6 +13,25 @@ tunnel_pid_file="${bridge_dir}/cloudflared.pid"
 tunnel_log_file="${bridge_dir}/cloudflared.log"
 ssh_state_dir="${workspace_dir}/ssh"
 
+start_base_image() {
+  trap - EXIT
+  exec /start.sh
+}
+
+recover_base_image_on_error() {
+  local exit_status="$?"
+  trap - EXIT
+  if (( exit_status != 0 )); then
+    echo "RunPod bootstrap failed with status ${exit_status}; starting base services for recovery." >&2
+    exec /start.sh
+  fi
+}
+
+# A bridge, tunnel, Git, or health-check failure must not make the whole Pod
+# unreachable. The base image supplies Jupyter and RunPod's recovery surfaces,
+# so hand control to it even when bootstrap exits early under `set -e`.
+trap recover_base_image_on_error EXIT
+
 fail() {
   echo "RunPod bootstrap failed: $*" >&2
   exit 1
@@ -154,4 +173,4 @@ if [[ -n "${PUBLIC_BASE_URL:-}" ]]; then
 fi
 
 # Preserve Jupyter and any other services supplied by the RunPod base image.
-exec /start.sh
+start_base_image

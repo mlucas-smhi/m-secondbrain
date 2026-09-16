@@ -99,6 +99,12 @@ checks local and public health, and then executes the RunPod image's original
 It discovers `cloudflared` through `PATH` or RunPod's persistent
 `/workspace/bin/cloudflared` location.
 
+Bootstrap failures are recoverable: if Git deployment, the bridge, the tunnel,
+or a health check fails, the script still executes the base image's `/start.sh`
+so the Pod remains reachable through RunPod's recovery surfaces. The failed
+component remains unavailable until repaired; startup does not report it as
+healthy or silently bypass the check.
+
 Configure these runtime values:
 
 - `RUNPOD_SSH_PUBLIC_KEY`: the public key only; this is not a secret.
