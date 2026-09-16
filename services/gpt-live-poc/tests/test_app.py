@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from live_poc.app import (
     incoming_session_id,
     live_session_payload,
     validate_memory_path,
+    twilio_dial_result,
 )
 
 
@@ -64,6 +66,17 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertEqual(session["model"], "gpt-live-1")
         self.assertEqual(session["audio"]["output"]["voice"], "marin")
         self.assertIn("read-only", session["instructions"])
+
+
+class TwilioCallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_terminal_twiml_without_echoing_callback_data(self) -> None:
+        async def post() -> dict[str, str]:
+            return {"DialCallStatus": "failed", "DialSipResponseCode": "503"}
+
+        response = await twilio_dial_result(SimpleNamespace(post=post))
+        self.assertEqual(response.status, 200)
+        self.assertIn("<Hangup/>", response.text)
+        self.assertNotIn("503", response.text)
 
 
 if __name__ == "__main__":

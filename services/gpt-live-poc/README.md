@@ -68,6 +68,10 @@ Public webhook path:
 https://<control-host>/openai/webhook
 ```
 
+For SIP diagnostics, set the Twilio `<Dial action>` to
+`https://<control-host>/twilio/dial-result`. The callback logs only the dial
+status and SIP response code; it does not retain caller numbers or audio.
+
 Configure that URL as an OpenAI project webhook for incoming Live transport
 events. Route only the dedicated Twilio canary number to the OpenAI SIP URI;
 do not repoint the production ElevenLabs number.

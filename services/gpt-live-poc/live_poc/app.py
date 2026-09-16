@@ -176,6 +176,19 @@ async def health(request: web.Request) -> web.Response:
     )
 
 
+async def twilio_dial_result(request: web.Request) -> web.Response:
+    form = await request.post()
+    LOG.info(
+        "twilio_dial_result status=%s sip_response_code=%s",
+        str(form.get("DialCallStatus", "unknown"))[:40],
+        str(form.get("DialSipResponseCode", "unknown"))[:16],
+    )
+    return web.Response(
+        text='<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
+        content_type="application/xml",
+    )
+
+
 async def openai_webhook(request: web.Request) -> web.Response:
     settings: Settings = request.app["settings"]
     raw_body = await request.text()
@@ -209,6 +222,7 @@ def create_app(settings: Settings) -> web.Application:
     app.add_routes(
         [
             web.get("/health", health),
+            web.post("/twilio/dial-result", twilio_dial_result),
             web.post("/openai/webhook", openai_webhook),
         ]
     )
