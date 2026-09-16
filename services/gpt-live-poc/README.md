@@ -25,9 +25,11 @@ CPU container. It does not share the production ElevenLabs number or bridge.
    spoken session.
 5. Add write operations only behind a separate confirmation policy, if ever.
 
-Stage 1 is implemented here. Stage 2 is deliberately not faked: the Live
-sideband must be attached using the session identifier from the signed webhook
-before real GitHub memory lookup is enabled.
+Stages 1 and 2 are implemented here. When `GITHUB_TOKEN` is configured, the
+signed incoming-session webhook accepts the call and attaches a trusted Live
+sideband controller. A delegated Responses model may call exactly one tool:
+`read_memory`. The token remains in the container and never enters the spoken
+session.
 
 ## Required configuration
 

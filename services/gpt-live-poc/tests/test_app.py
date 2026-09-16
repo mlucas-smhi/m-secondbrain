@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -11,7 +12,9 @@ sys.path.insert(0, str(ROOT))
 
 from live_poc.app import (
     Settings,
+    execute_memory_call,
     event_type,
+    function_call_from_event,
     incoming_session_id,
     live_session_payload,
     validate_memory_path,
@@ -66,6 +69,36 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertEqual(session["model"], "gpt-live-1")
         self.assertEqual(session["audio"]["output"]["voice"], "marin")
         self.assertIn("read-only", session["instructions"])
+
+    def test_adds_only_read_memory_when_github_is_enabled(self) -> None:
+        payload = live_session_payload(Settings("key", "secret", github_token="token"))
+        responses = payload["session"]["delegation"]["responses"]
+        self.assertEqual(responses["tools"][0]["name"], "read_memory")
+        self.assertFalse(responses["parallel_tool_calls"])
+
+
+class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
+    def test_extracts_completed_function_call(self) -> None:
+        event = {
+            "type": "response.event",
+            "event": {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "function_call",
+                    "name": "read_memory",
+                    "call_id": "call_123",
+                    "arguments": '{"path":"people/michael.md"}',
+                },
+            },
+        }
+        self.assertEqual(function_call_from_event(event)["call_id"], "call_123")
+
+    async def test_rejects_unknown_tool_without_calling_github(self) -> None:
+        output = await execute_memory_call(
+            Settings("key", "secret", github_token="token"),
+            {"name": "write_memory", "call_id": "call_123", "arguments": "{}"},
+        )
+        self.assertEqual(json.loads(output), {"ok": False, "error": "tool_not_allowed"})
 
 
 class TwilioCallbackTests(unittest.IsolatedAsyncioTestCase):
