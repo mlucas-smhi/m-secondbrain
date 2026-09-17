@@ -136,7 +136,10 @@ class SessionPayloadTests(unittest.TestCase):
         tool = payload["tools"][0]
         self.assertEqual(tool["server_url"], "https://memory.example.com/mcp")
         self.assertEqual(tool["headers"], {"Authorization": "Bearer secret"})
-        self.assertEqual(tool["allowed_tools"], ["memory/search", "memory/get"])
+        self.assertEqual(
+            tool["allowed_tools"],
+            {"tool_names": ["memory/search", "memory/get"]},
+        )
         self.assertEqual(tool["require_approval"], "never")
 
     def test_realtime_payload_omits_incomplete_mcp_configuration(self) -> None:
