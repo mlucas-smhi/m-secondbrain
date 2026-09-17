@@ -15,6 +15,19 @@ caller -> Twilio number -> Twilio SIP -> OpenAI GPT Live 1
 No GPU is required. The service is control-plane only and can run on a small
 CPU container. It does not share the production ElevenLabs number or bridge.
 
+## Parallel Realtime + MCP mode
+
+The proven path remains the default (`OPENAI_VOICE_API=live`). A parallel
+canary can instead set `OPENAI_VOICE_API=realtime` and connect GPT Realtime
+directly to a remote MCP server. For LiteGraph 8.1, use its standard
+Streamable HTTP endpoint ending in `/mcp`; `/rpc` is the legacy Voltaic
+compatibility endpoint.
+
+Set `MCP_SERVER_URL`, the secret `MCP_AUTHORIZATION` header value, and an
+explicit comma-separated `MCP_ALLOWED_TOOLS` list. Keep that list read-only.
+The model never receives unrestricted LiteGraph tools, and the working
+Live/GitHub canary remains available for rollback.
+
 ## POC stages
 
 1. Prove the dedicated Twilio line reaches GPT Live 1 and supports natural

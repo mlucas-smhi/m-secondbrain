@@ -21,6 +21,7 @@ from live_poc.app import (
     incoming_session_id,
     inbound_twiml,
     live_session_payload,
+    realtime_call_payload,
     validate_memory_path,
     twilio_dial_result,
     twilio_inbound,
@@ -36,6 +37,19 @@ class SettingsTests(unittest.TestCase):
     def test_github_memory_requires_token(self) -> None:
         self.assertFalse(Settings("key", "secret").github_memory_enabled)
         self.assertTrue(Settings("key", "secret", github_token="token").github_memory_enabled)
+
+    def test_realtime_mcp_requires_complete_configuration(self) -> None:
+        partial = Settings("key", "secret", voice_api="realtime")
+        self.assertFalse(partial.realtime_mcp_enabled)
+        complete = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            mcp_server_url="https://memory.example.com/mcp",
+            mcp_authorization="Bearer secret",
+            mcp_allowed_tools=("memory/search",),
+        )
+        self.assertTrue(complete.realtime_mcp_enabled)
 
 
 class MemoryBoundaryTests(unittest.TestCase):
@@ -91,6 +105,29 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertIn("reference/preferences.md", responses["instructions"])
         self.assertEqual(responses["tools"][0]["name"], "read_memory")
         self.assertFalse(responses["parallel_tool_calls"])
+
+    def test_realtime_mcp_is_header_authenticated_and_read_only(self) -> None:
+        settings = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            mcp_server_url="https://memory.example.com/mcp",
+            mcp_authorization="Bearer secret",
+            mcp_allowed_tools=("memory/search", "memory/get"),
+        )
+        payload = realtime_call_payload(settings)
+        self.assertEqual(payload["type"], "realtime")
+        self.assertIn("LiteGraph memory tools", payload["instructions"])
+        self.assertNotIn("GitHub memory", payload["instructions"])
+        tool = payload["tools"][0]
+        self.assertEqual(tool["server_url"], "https://memory.example.com/mcp")
+        self.assertEqual(tool["headers"], {"Authorization": "Bearer secret"})
+        self.assertEqual(tool["allowed_tools"], ["memory/search", "memory/get"])
+        self.assertEqual(tool["require_approval"], "never")
+
+    def test_realtime_payload_omits_incomplete_mcp_configuration(self) -> None:
+        payload = realtime_call_payload(Settings("key", "secret", voice_api="realtime"))
+        self.assertNotIn("tools", payload)
 
 
 class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
