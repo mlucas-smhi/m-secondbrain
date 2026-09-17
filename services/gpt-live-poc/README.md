@@ -23,7 +23,7 @@ directly to a remote MCP server. For LiteGraph 8.1, use its standard
 Streamable HTTP endpoint ending in `/mcp`; `/rpc` is the legacy Voltaic
 compatibility endpoint.
 
-Set `MCP_SERVER_URL`, the secret `MCP_AUTHORIZATION` header value, and an
+Set `MCP_SERVER_URL`, the secret raw access token in `MCP_AUTHORIZATION`, and an
 explicit comma-separated `MCP_ALLOWED_TOOLS` list. Keep that list read-only.
 The model never receives unrestricted LiteGraph tools, and the working
 Live/GitHub canary remains available for rollback.

@@ -298,7 +298,7 @@ def realtime_call_payload(settings: Settings) -> dict[str, Any]:
                     "Read-only access to authorized personal memory in LiteGraph."
                 ),
                 "server_url": settings.mcp_server_url,
-                "headers": {"Authorization": settings.mcp_authorization},
+                "authorization": settings.mcp_authorization,
                 "allowed_tools": {
                     "tool_names": list(settings.mcp_allowed_tools),
                 },

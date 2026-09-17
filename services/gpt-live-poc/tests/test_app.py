@@ -47,7 +47,7 @@ class SettingsTests(unittest.TestCase):
             "secret",
             voice_api="realtime",
             mcp_server_url="https://memory.example.com/mcp",
-            mcp_authorization="Bearer secret",
+            mcp_authorization="secret",
             mcp_allowed_tools=("memory/search",),
         )
         self.assertTrue(complete.realtime_mcp_enabled)
@@ -120,13 +120,13 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertEqual(responses["tools"][0]["name"], "read_memory")
         self.assertFalse(responses["parallel_tool_calls"])
 
-    def test_realtime_mcp_is_header_authenticated_and_read_only(self) -> None:
+    def test_realtime_mcp_is_token_authenticated_and_read_only(self) -> None:
         settings = Settings(
             "key",
             "secret",
             voice_api="realtime",
             mcp_server_url="https://memory.example.com/mcp",
-            mcp_authorization="Bearer secret",
+            mcp_authorization="secret",
             mcp_allowed_tools=("memory/search", "memory/get"),
         )
         payload = realtime_call_payload(settings)
@@ -135,7 +135,7 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertNotIn("GitHub memory", payload["instructions"])
         tool = payload["tools"][0]
         self.assertEqual(tool["server_url"], "https://memory.example.com/mcp")
-        self.assertEqual(tool["headers"], {"Authorization": "Bearer secret"})
+        self.assertEqual(tool["authorization"], "secret")
         self.assertEqual(
             tool["allowed_tools"],
             {"tool_names": ["memory/search", "memory/get"]},
