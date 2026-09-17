@@ -1,0 +1,69 @@
+location: __LOCATION__
+name: __APP_NAME__
+type: Microsoft.App/containerApps
+properties:
+  managedEnvironmentId: __ENVIRONMENT_ID__
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      allowInsecure: false
+      targetPort: 8080
+      transport: auto
+    secrets:
+      - name: litegraph-admin-token
+        value: __LITEGRAPH_ADMIN_TOKEN__
+      - name: mcp-edge-token
+        value: __MCP_EDGE_TOKEN__
+  template:
+    containers:
+      - name: litegraph
+        image: jchristn77/litegraph:v8.1.0
+        command: ["/bin/sh"]
+        args:
+          - -lc
+          - cp /data/litegraph.json /app/litegraph.json && exec dotnet LiteGraph.Server.dll
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        volumeMounts:
+          - volumeName: litegraph-data
+            mountPath: /data
+      - name: litegraph-mcp
+        image: jchristn77/litegraph-mcp:v8.1.0
+        env:
+          - name: LITEGRAPH_ENDPOINT
+            value: http://127.0.0.1:8701
+          - name: LITEGRAPH_API_KEY
+            secretRef: litegraph-admin-token
+          - name: MCP_HTTP_HOSTNAME
+            value: "*"
+          - name: MCP_HTTP_PORT
+            value: "8702"
+          - name: MCP_TCP_ADDRESS
+            value: 127.0.0.1
+          - name: MCP_WS_HOSTNAME
+            value: 127.0.0.1
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+      - name: mcp-gateway
+        image: caddy:2.10-alpine
+        command: ["caddy"]
+        args: ["run", "--config", "/data/Caddyfile", "--adapter", "caddyfile"]
+        env:
+          - name: MCP_EDGE_TOKEN
+            secretRef: mcp-edge-token
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        volumeMounts:
+          - volumeName: litegraph-data
+            mountPath: /data
+    scale:
+      minReplicas: 1
+      maxReplicas: 1
+    volumes:
+      - name: litegraph-data
+        storageType: AzureFile
+        storageName: __ENV_STORAGE_NAME__
