@@ -19,6 +19,7 @@ from live_poc.app import (
     event_type,
     function_call_from_event,
     incoming_session_id,
+    incoming_event_matches_voice_api,
     inbound_twiml,
     live_session_payload,
     realtime_call_payload,
@@ -85,6 +86,19 @@ class IncomingEventTests(unittest.TestCase):
     def test_tolerates_legacy_call_id(self) -> None:
         event = {"type": "live.call.incoming", "data": {"call_id": "call_123"}}
         self.assertEqual(incoming_session_id(event), "call_123")
+
+    def test_realtime_mode_accepts_only_realtime_event(self) -> None:
+        self.assertTrue(
+            incoming_event_matches_voice_api("realtime.call.incoming", "realtime")
+        )
+        self.assertFalse(
+            incoming_event_matches_voice_api("live.transport.incoming", "realtime")
+        )
+
+    def test_live_mode_accepts_live_events_only(self) -> None:
+        self.assertTrue(incoming_event_matches_voice_api("live.transport.incoming", "live"))
+        self.assertTrue(incoming_event_matches_voice_api("live.call.incoming", "live"))
+        self.assertFalse(incoming_event_matches_voice_api("realtime.call.incoming", "live"))
 
 
 class SessionPayloadTests(unittest.TestCase):

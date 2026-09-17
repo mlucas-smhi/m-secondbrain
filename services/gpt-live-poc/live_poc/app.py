@@ -243,6 +243,12 @@ def incoming_session_id(event: Any) -> str:
     ).strip()
 
 
+def incoming_event_matches_voice_api(kind: str, voice_api: str) -> bool:
+    if voice_api == "realtime":
+        return kind == "realtime.call.incoming"
+    return kind in {"live.transport.incoming", "live.call.incoming"}
+
+
 def live_session_payload(settings: Settings) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "session": {
@@ -516,6 +522,14 @@ async def openai_webhook(request: web.Request) -> web.Response:
         "live.call.incoming",
         "realtime.call.incoming",
     }:
+        return web.json_response({"received": True, "ignored": kind})
+
+    if not incoming_event_matches_voice_api(kind, settings.voice_api):
+        LOG.info(
+            "incoming_call_surface_ignored event_type=%s voice_api=%s",
+            kind,
+            settings.voice_api,
+        )
         return web.json_response({"received": True, "ignored": kind})
 
     session_id = incoming_session_id(event)
