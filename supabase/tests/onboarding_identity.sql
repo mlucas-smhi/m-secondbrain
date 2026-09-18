@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(18);
+SELECT plan(21);
 
 SELECT has_table('public', 'application_users', 'application users table exists');
 SELECT has_table('public', 'onboarding_invites', 'onboarding invites table exists');
@@ -60,6 +60,9 @@ SELECT is((SELECT count(*)::integer FROM public.application_users WHERE created_
 SELECT is((SELECT count(*)::integer FROM public.trust_actor_identifiers WHERE normalized_value = '+18323886696' AND verification_status = 'verified'), 1, 'phone is bound as a verified actor identifier');
 SELECT is((SELECT count(*)::integer FROM public.trust_role_assignments assignment JOIN public.trust_actors actor ON actor.id = assignment.actor_id WHERE actor.application_user_id = (SELECT (body->>'user_id')::uuid FROM onboarding_result) AND assignment.role_key = 'owner' AND assignment.clearance_level = 3), 1, 'workspace owner authority is provisioned');
 SELECT is((SELECT count(*)::integer FROM public.onboarding_sessions WHERE user_id = (SELECT (body->>'user_id')::uuid FROM onboarding_result) AND status = 'in_progress'), 1, 'resumable onboarding session is created');
+SELECT is((SELECT count(*)::integer FROM public.threads WHERE id = (SELECT (body->>'thread_id')::uuid FROM onboarding_result) AND status = 'active'), 1, 'onboarding owns a durable active thread');
+SELECT is((SELECT count(*)::integer FROM public.thread_participants WHERE thread_id = (SELECT (body->>'thread_id')::uuid FROM onboarding_result) AND actor_ref = (SELECT body->>'actor_ref' FROM onboarding_result)), 1, 'verified owner participates in the onboarding thread');
+SELECT is((SELECT count(*)::integer FROM public.thread_interactions WHERE thread_id = (SELECT (body->>'thread_id')::uuid FROM onboarding_result) AND channel = 'phone' AND external_id = 'call-test-good'), 1, 'first phone interaction is recorded on the durable thread');
 SELECT is((SELECT count(*)::integer FROM public.workspace_memory_stores WHERE workspace_id = (SELECT (body->>'workspace_id')::uuid FROM onboarding_result) AND provider = 'litegraph'), 1, 'workspace memory namespace is reserved');
 
 SELECT is(

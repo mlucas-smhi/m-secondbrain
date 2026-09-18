@@ -381,10 +381,12 @@ not interrupt, hold, merge, or disclose a caller by itself.
 ## Onboarding identity
 
 Onboarding keeps the temporary invitation, permanent application user,
-workspace-scoped trust actor, and verified identifiers separate. A successful
+workspace-scoped trust actor, and verified identifiers separate. Onboarding is
+the user's first durable thread, not a separate conversation system. A successful
 verification atomically creates the user's personal workspace, owner role,
 verified phone or email identifier, resumable onboarding session, trust
-session, and LiteGraph namespace reservation.
+session, thread participation, first channel interaction, and LiteGraph
+namespace reservation.
 
 Configure these Edge Function secrets:
 
@@ -409,8 +411,11 @@ return the original user and onboarding session instead of provisioning a
 duplicate. A new request cannot reuse a consumed invitation.
 
 Onboarding sessions are channel-independent. A later phone, SMS, email, or web
-interaction may resume the same session only after that channel has been bound
-to the same trust actor as a verified identifier.
+interaction may resume the same durable thread only after that channel has been
+bound to the same trust actor as a verified identifier. Those touches belong in
+`thread_interactions`; there is intentionally no onboarding-specific interaction
+table. The same thread primitive carries ordinary requests, background work,
+unresolved decisions, and later channel changes after onboarding ends.
 
 Example first-delivery response:
 

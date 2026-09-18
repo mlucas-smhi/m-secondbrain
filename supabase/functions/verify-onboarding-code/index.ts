@@ -77,6 +77,7 @@ Deno.serve(async (request) => {
       user_id: internal.user_id,
       actor_ref: internal.actor_ref,
       workspace_id: internal.workspace_id,
+      thread_id: internal.thread_id,
       onboarding_session_id: internal.onboarding_session_id,
       trust_session_id: internal.trust_session_id,
       onboarding_state: internal.onboarding_state ?? "in_progress",
