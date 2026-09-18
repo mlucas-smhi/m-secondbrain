@@ -656,6 +656,7 @@ async def run_realtime_sideband(
         handled_function_calls: set[str] = set()
         continued_mcp_calls: set[str] = set()
         pending_mcp_continuations: set[str] = set()
+        onboarding_greeting_requested = False
         response_active = False
         update: dict[str, Any] = {
             "type": "session.update",
@@ -745,6 +746,10 @@ async def run_realtime_sideband(
                 continue
             if kind == "session.updated":
                 LOG.info("realtime_mcp_update_confirmed call_id=%s", call_id)
+                if settings.onboarding_enabled and not onboarding_greeting_requested:
+                    onboarding_greeting_requested = True
+                    await connection.send(json.dumps(onboarding_greeting_event()))
+                    LOG.info("onboarding_greeting_requested call_id=%s", call_id)
             elif kind == "response.created":
                 response_active = True
             elif kind == "response.done":
@@ -878,6 +883,22 @@ def mcp_continuation_event() -> dict[str, Any]:
                 "conversation. Do not call another tool, wait for more speech, mention "
                 "the lookup process, or repeat a greeting. If the result contains no "
                 "answer, say so briefly."
+            ),
+            "tool_choice": "none",
+        },
+    }
+
+
+def onboarding_greeting_event() -> dict[str, Any]:
+    """Prompt the unverified caller without waiting for caller speech."""
+    return {
+        "type": "response.create",
+        "response": {
+            "instructions": (
+                "The call has just connected. Speak first. Introduce yourself and ask "
+                "for the validation code by saying exactly: Hello, I'm 2. What's your "
+                "validation code? Do not wait for the caller to greet you, begin "
+                "onboarding, reveal context, or call a tool yet."
             ),
             "tool_choice": "none",
         },

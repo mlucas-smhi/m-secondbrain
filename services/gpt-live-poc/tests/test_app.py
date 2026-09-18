@@ -24,6 +24,7 @@ from live_poc.app import (
     live_session_payload,
     mcp_continuation_event,
     onboarding_response_instructions,
+    onboarding_greeting_event,
     realtime_call_payload,
     realtime_function_call_from_event,
     validate_memory_path,
@@ -188,6 +189,13 @@ class SessionPayloadTests(unittest.TestCase):
 
 
 class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
+    def test_onboarding_greeting_speaks_first_and_disables_tools(self) -> None:
+        event = onboarding_greeting_event()
+        self.assertEqual(event["type"], "response.create")
+        self.assertEqual(event["response"]["tool_choice"], "none")
+        self.assertIn("Speak first", event["response"]["instructions"])
+        self.assertIn("Hello, I'm 2", event["response"]["instructions"])
+
     def test_mcp_continuation_forces_a_spoken_answer_without_another_tool(self) -> None:
         event = mcp_continuation_event()
         self.assertEqual(event["type"], "response.create")
