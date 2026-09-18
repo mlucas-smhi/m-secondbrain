@@ -22,7 +22,10 @@ from live_poc.app import (
     incoming_event_matches_voice_api,
     inbound_twiml,
     live_session_payload,
+    mcp_continuation_event,
+    onboarding_response_instructions,
     realtime_call_payload,
+    realtime_function_call_from_event,
     validate_memory_path,
     twilio_dial_result,
     twilio_inbound,
@@ -51,6 +54,19 @@ class SettingsTests(unittest.TestCase):
             mcp_allowed_tools=("memory/search",),
         )
         self.assertTrue(complete.realtime_mcp_enabled)
+
+    def test_onboarding_requires_full_trusted_configuration(self) -> None:
+        self.assertFalse(Settings("key", "secret").onboarding_enabled)
+        configured = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            allowed_caller_number="+15550000001",
+            onboarding_verify_url="https://example.supabase.co/verify",
+            onboarding_api_key="onboarding-key",
+            onboarding_invite_id="10000000-0000-4000-8000-000000000001",
+        )
+        self.assertTrue(configured.onboarding_enabled)
 
 
 class MemoryBoundaryTests(unittest.TestCase):
@@ -107,7 +123,7 @@ class SessionPayloadTests(unittest.TestCase):
         session = payload["session"]
         self.assertEqual(session["type"], "live")
         self.assertEqual(session["model"], "gpt-live-1")
-        self.assertEqual(session["audio"]["output"]["voice"], "marin")
+        self.assertEqual(session["audio"]["output"]["voice"], "coral")
         self.assertIn("read-only", session["instructions"])
 
     def test_adds_only_read_memory_when_github_is_enabled(self) -> None:
@@ -131,10 +147,15 @@ class SessionPayloadTests(unittest.TestCase):
         )
         payload = realtime_call_payload(settings)
         self.assertEqual(payload["type"], "realtime")
-        self.assertIn("LiteGraph memory tools", payload["instructions"])
+        self.assertIn("You are 2", payload["instructions"])
+        self.assertIn("LiteGraph is the canonical", payload["instructions"])
+        self.assertIn("slightly snooty edge", payload["instructions"])
+        self.assertIn("proactively capture information", payload["instructions"])
+        self.assertIn("If no write tool is available", payload["instructions"])
         self.assertNotIn("GitHub memory", payload["instructions"])
         tool = payload["tools"][0]
         self.assertEqual(tool["server_url"], "https://memory.example.com/mcp")
+        self.assertTrue(tool["defer_loading"])
         self.assertEqual(tool["authorization"], "secret")
         self.assertEqual(
             tool["allowed_tools"],
@@ -146,8 +167,33 @@ class SessionPayloadTests(unittest.TestCase):
         payload = realtime_call_payload(Settings("key", "secret", voice_api="realtime"))
         self.assertNotIn("tools", payload)
 
+    def test_onboarding_withholds_memory_until_backend_confirmation(self) -> None:
+        settings = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            allowed_caller_number="+15550000001",
+            mcp_server_url="https://memory.example.com/mcp",
+            mcp_authorization="memory-token",
+            mcp_allowed_tools=("memory_search", "memory_get"),
+            onboarding_verify_url="https://example.supabase.co/verify",
+            onboarding_api_key="onboarding-key",
+            onboarding_invite_id="10000000-0000-4000-8000-000000000001",
+        )
+        payload = realtime_call_payload(settings)
+        self.assertIn("First-Run Onboarding", payload["instructions"])
+        self.assertIn("authentication_status: unverified", payload["instructions"])
+        self.assertEqual([tool["name"] for tool in payload["tools"]], ["validate_onboarding_code"])
+        self.assertNotIn("mcp", {tool["type"] for tool in payload["tools"]})
+
 
 class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
+    def test_mcp_continuation_forces_a_spoken_answer_without_another_tool(self) -> None:
+        event = mcp_continuation_event()
+        self.assertEqual(event["type"], "response.create")
+        self.assertEqual(event["response"]["tool_choice"], "none")
+        self.assertIn("Immediately answer", event["response"]["instructions"])
+
     def test_extracts_completed_function_call(self) -> None:
         event = {
             "type": "response.event",
@@ -162,6 +208,27 @@ class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
             },
         }
         self.assertEqual(function_call_from_event(event)["call_id"], "call_123")
+
+    def test_extracts_realtime_onboarding_function_call(self) -> None:
+        event = {
+            "type": "response.function_call_arguments.done",
+            "name": "validate_onboarding_code",
+            "call_id": "call_validate_1",
+            "arguments": '{"code":"123456"}',
+        }
+        self.assertEqual(
+            realtime_function_call_from_event(event),
+            {
+                "name": "validate_onboarding_code",
+                "call_id": "call_validate_1",
+                "arguments": '{"code":"123456"}',
+            },
+        )
+
+    def test_confirmed_onboarding_result_starts_topic_one(self) -> None:
+        instructions = onboarding_response_instructions("confirmed")
+        self.assertIn("Code confirmed", instructions)
+        self.assertIn("begin topic 1", instructions)
 
     async def test_rejects_unknown_tool_without_calling_github(self) -> None:
         output = await execute_memory_call(

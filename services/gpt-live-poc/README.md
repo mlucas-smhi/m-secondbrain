@@ -28,6 +28,30 @@ explicit comma-separated `MCP_ALLOWED_TOOLS` list. Keep that list read-only.
 The model never receives unrestricted LiteGraph tools, and the working
 Live/GitHub canary remains available for rollback.
 
+The Realtime identity, memory doctrine, trust boundaries, tool etiquette, and
+voice direction live in `live_poc/two-realtime-prompt.md`. Keep operational
+capabilities conditional on the tools exposed to each session so the prompt can
+support read-only deployments now and authorized memory capture later.
+
+## First-run onboarding gate
+
+Set `ONBOARDING_VERIFY_URL`, `ONBOARDING_API_KEY`, and `ONBOARDING_INVITE_ID`
+to put the Realtime canary into first-run onboarding mode. The caller's exact
+allowlisted E.164 number is supplied by the trusted bridge; the model supplies
+only the six-digit code it heard.
+
+Before confirmation, the session receives the onboarding prompt and one local
+function: `validate_onboarding_code`. LiteGraph MCP tools are withheld. The
+bridge sends the code to the Supabase verification function, which atomically
+returns the permanent actor, workspace, onboarding session, trust session, and
+durable thread. After confirmation the bridge removes the validation tool,
+marks the runtime context confirmed, and begins topic 1. Internal identifiers
+are never spoken.
+
+The current POC intentionally exposes no memory-write tool after confirmation.
+Do not claim onboarding answers were persisted until the workspace's LiteGraph
+namespace is active and an authorized write facade has been added.
+
 ## POC stages
 
 1. Prove the dedicated Twilio line reaches GPT Live 1 and supports natural
