@@ -378,6 +378,40 @@ held, or merging sessions in the same workspace. An other participant's
 identity state; otherwise identity is explicitly `withheld`. This endpoint does
 not interrupt, hold, merge, or disclose a caller by itself.
 
+## Onboarding identity
+
+Onboarding keeps the temporary invitation, permanent application user,
+workspace-scoped trust actor, and verified identifiers separate. A successful
+verification atomically creates the user's personal workspace, owner role,
+verified phone or email identifier, resumable onboarding session, trust
+session, and LiteGraph namespace reservation.
+
+Configure these Edge Function secrets:
+
+```text
+ONBOARDING_API_KEY=<independent machine-to-machine key>
+ONBOARDING_CODE_PEPPER=<high-entropy server-only HMAC secret>
+```
+
+Both endpoints require `X-Onboarding-Key`. `issue-onboarding-invite` returns a
+six-digit code exactly once to the trusted caller, which is responsible for
+delivery. The raw code is never logged or stored; Postgres receives only an
+invite-bound HMAC digest.
+
+`verify-onboarding-code` accepts the invitation ID, six-digit code, verified
+channel identifier, and external call/session reference. Wrong, expired,
+revoked, consumed, and unknown invitations all produce the same external
+`verification_failed` response. Precise failure reasons remain in the
+service-role-only validation audit.
+
+Retry the same verification with the same `request_id`. Successful retries
+return the original user and onboarding session instead of provisioning a
+duplicate. A new request cannot reuse a consumed invitation.
+
+Onboarding sessions are channel-independent. A later phone, SMS, email, or web
+interaction may resume the same session only after that channel has been bound
+to the same trust actor as a verified identifier.
+
 Example first-delivery response:
 
 ```json
