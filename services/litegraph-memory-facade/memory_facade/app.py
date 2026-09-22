@@ -29,6 +29,14 @@ MEMORY_TYPES = {
     "commitment",
 }
 SENSITIVITY_LEVELS = {"level_1", "level_2", "level_3"}
+READY_SCOPES: set[tuple[str, str, str]] = set()
+
+
+class LiteGraphHttpError(RuntimeError):
+    def __init__(self, status: int, detail: str = "") -> None:
+        super().__init__(f"litegraph_http_{status}")
+        self.status = status
+        self.detail = " ".join(detail.split())[:500]
 
 
 @dataclass(frozen=True)
@@ -180,11 +188,71 @@ async def litegraph_request(
         ) as response:
             body = await response.text()
             if response.status >= 400:
-                raise RuntimeError(f"litegraph_http_{response.status}")
+                raise LiteGraphHttpError(response.status, body)
             return json.loads(body) if body else None
 
 
+async def _resource_exists(settings: Settings, path: str) -> bool:
+    try:
+        await litegraph_request(settings, "HEAD", path)
+        return True
+    except LiteGraphHttpError as error:
+        if error.status == 404:
+            return False
+        if error.status == 400 and "no graph with guid" in error.detail.lower():
+            return False
+        raise
+
+
+async def ensure_memory_scope(settings: Settings) -> None:
+    """Create the one configured tenant and graph when ephemeral storage is empty."""
+    scope = (settings.litegraph_endpoint, settings.tenant_guid, settings.graph_guid)
+    if scope in READY_SCOPES:
+        return
+
+    tenant_path = f"/v1.0/tenants/{settings.tenant_guid}"
+    if not await _resource_exists(settings, tenant_path):
+        try:
+            await litegraph_request(
+                settings,
+                "PUT",
+                "/v1.0/tenants",
+                json_body={
+                    "GUID": settings.tenant_guid,
+                    "Name": "2-memory-poc",
+                    "Active": True,
+                },
+            )
+            LOG.warning("memory_scope_tenant_created tenant=%s", settings.tenant_guid)
+        except LiteGraphHttpError as error:
+            if error.status != 409:
+                raise
+
+    graph_path = (
+        f"/v1.0/tenants/{settings.tenant_guid}/graphs/{settings.graph_guid}"
+    )
+    if not await _resource_exists(settings, graph_path):
+        try:
+            await litegraph_request(
+                settings,
+                "PUT",
+                f"/v1.0/tenants/{settings.tenant_guid}/graphs",
+                json_body={
+                    "TenantGUID": settings.tenant_guid,
+                    "GUID": settings.graph_guid,
+                    "Name": "2-memory",
+                },
+            )
+            LOG.warning("memory_scope_graph_created graph=%s", settings.graph_guid)
+        except LiteGraphHttpError as error:
+            if error.status != 409:
+                raise
+
+    READY_SCOPES.add(scope)
+
+
 async def search_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    await ensure_memory_scope(settings)
     query = str(arguments.get("query", "")).strip()
     if not query:
         raise ValueError("query_required")
@@ -217,6 +285,7 @@ async def search_memory(settings: Settings, arguments: dict[str, Any]) -> dict[s
 
 
 async def get_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    await ensure_memory_scope(settings)
     memory_id = str(arguments.get("memory_id", "")).strip()
     if not memory_id or "/" in memory_id or ".." in memory_id:
         raise ValueError("invalid_memory_id")
@@ -308,22 +377,16 @@ def build_memory_node(settings: Settings, arguments: dict[str, Any]) -> dict[str
 
 
 async def store_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    await ensure_memory_scope(settings)
     node = build_memory_node(settings, arguments)
     memory_id = node["GUID"]
     item_path = (
         f"/v1.0/tenants/{settings.tenant_guid}/graphs/{settings.graph_guid}"
         f"/nodes/{memory_id}"
     )
-    try:
-        existing = await litegraph_request(
-            settings, "GET", item_path, params={"incldata": "true", "inclsub": "false"}
-        )
-    except RuntimeError as error:
-        if str(error) != "litegraph_http_404":
-            raise
-    else:
+    if await _resource_exists(settings, item_path):
         return {
-            "memory_id": _node_id(existing) or memory_id,
+            "memory_id": memory_id,
             "stored": False,
             "duplicate": True,
             "sensitivity": node["Data"]["sensitivity"],

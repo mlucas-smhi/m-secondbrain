@@ -3,8 +3,11 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 from memory_facade.app import (
+    LiteGraphHttpError,
+    READY_SCOPES,
     Settings,
     build_memory_node,
+    ensure_memory_scope,
     rank_nodes,
     store_memory,
     tool_catalog,
@@ -12,6 +15,9 @@ from memory_facade.app import (
 
 
 class FacadeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        READY_SCOPES.clear()
+
     def test_exposes_scoped_realtime_safe_tools(self):
         tools = tool_catalog()
         self.assertEqual(
@@ -86,13 +92,43 @@ class FacadeTests(unittest.IsolatedAsyncioTestCase):
             "source_thread_ref": "thread_test",
         }
         with patch(
+            "memory_facade.app.ensure_memory_scope", new=AsyncMock()
+        ), patch(
             "memory_facade.app.litegraph_request",
-            new=AsyncMock(return_value={"GUID": "existing"}),
+            new=AsyncMock(return_value=None),
         ) as request:
             result = await store_memory(settings, arguments)
         self.assertTrue(result["duplicate"])
         self.assertFalse(result["stored"])
         request.assert_awaited_once()
+
+    async def test_bootstraps_missing_fixed_tenant_and_graph(self):
+        settings = Settings(
+            "http://litegraph", "key", str(uuid.UUID(int=1)), str(uuid.UUID(int=2))
+        )
+        missing = LiteGraphHttpError(404, "not found")
+        request = AsyncMock(side_effect=[missing, None, missing, None])
+        with patch("memory_facade.app.litegraph_request", new=request):
+            await ensure_memory_scope(settings)
+
+        self.assertEqual(request.await_count, 4)
+        tenant_create = request.await_args_list[1]
+        self.assertEqual(tenant_create.args[1:3], ("PUT", "/v1.0/tenants"))
+        self.assertEqual(tenant_create.kwargs["json_body"]["GUID"], settings.tenant_guid)
+        graph_create = request.await_args_list[3]
+        self.assertEqual(graph_create.args[1], "PUT")
+        self.assertEqual(graph_create.kwargs["json_body"]["GUID"], settings.graph_guid)
+
+    async def test_existing_scope_is_checked_only_once_per_process(self):
+        settings = Settings(
+            "http://litegraph", "key", str(uuid.UUID(int=1)), str(uuid.UUID(int=2))
+        )
+        request = AsyncMock(return_value=None)
+        with patch("memory_facade.app.litegraph_request", new=request):
+            await ensure_memory_scope(settings)
+            await ensure_memory_scope(settings)
+
+        self.assertEqual(request.await_count, 2)
 
 
 if __name__ == "__main__":

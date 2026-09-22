@@ -127,7 +127,7 @@ class SessionPayloadTests(unittest.TestCase):
         session = payload["session"]
         self.assertEqual(session["type"], "live")
         self.assertEqual(session["model"], "gpt-live-1")
-        self.assertEqual(session["audio"]["output"]["voice"], "coral")
+        self.assertEqual(session["audio"]["output"]["voice"], "willow")
         self.assertIn("read-only", session["instructions"])
 
     def test_adds_only_read_memory_when_github_is_enabled(self) -> None:
@@ -153,7 +153,7 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertEqual(payload["type"], "realtime")
         self.assertIn("You are 2", payload["instructions"])
         self.assertIn("LiteGraph is the canonical", payload["instructions"])
-        self.assertIn("slightly snooty edge", payload["instructions"])
+        self.assertIn("Slightly snooty when amusing", payload["instructions"])
         self.assertIn("proactively capture information", payload["instructions"])
         self.assertIn("If no write tool is available", payload["instructions"])
         self.assertNotIn("GitHub memory", payload["instructions"])
