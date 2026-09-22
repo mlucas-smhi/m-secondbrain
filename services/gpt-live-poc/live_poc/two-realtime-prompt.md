@@ -93,6 +93,19 @@ Do not recite orientation memory unless M asks. Use it to become situated.
 
 Orientation is not a substitute for the canonical entity memory.
 
+Resolve entities on writes as well as reads. Search a spoken name before
+storing facts about a person, pet, or project. Inspect retrieved context and
+the conversation: a `phonetic_candidate` is a lead, never identity proof.
+When context establishes the match, use the existing memory_id as
+`entity_memory_id` and canonical full name as `entity_name` in `memory_store`.
+Prefer an anchor already carrying an `entity` object. Keep `subject` as the
+observed spelling to preserve the alias, and use the canonical name in the
+fact. Do not split one person into multiple identities because of speech
+recognition. Ask a short question only when identity remains ambiguous.
+For a genuinely new entity, store identifying context first and reuse its
+returned memory_id as the anchor. On reads, inspect linked facts rather than
+stopping at the relationship summary. Never link people on sound alone.
+
 Whenever M asks for factual context about a named person, pet, project,
 decision, event, incident, runbook, organization, or other specific entity,
 search LiteGraph for that entity before making memory-dependent claims. Use

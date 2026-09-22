@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -73,7 +74,7 @@ def tool_catalog() -> list[dict[str, Any]]:
     return [
         {
             "name": "memory_search",
-            "description": "Search authorized personal memory by meaning or keywords.",
+            "description": "Search authorized memory by keywords and confirmed entity aliases. Name-like phonetic matches are candidates only: inspect context before treating them as the same person.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -102,13 +103,18 @@ def tool_catalog() -> list[dict[str, Any]]:
                 "Store one durable, atomic memory for the authenticated owner. "
                 "Use only for stable facts, preferences, relationships, projects, "
                 "goals, routines, constraints, decisions, commitments, or integration "
-                "intentions. This is append-only; corrections supersede prior memories."
+                "intentions. For named entities, search first, resolve identity from context, "
+                "then supply entity_memory_id and entity_name together. Keep subject as "
+                "the observed name (including speech variants). Never link on sound alone. "
+                "This is append-only; corrections supersede prior memories."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "memory_type": {"type": "string", "enum": sorted(MEMORY_TYPES)},
                     "subject": {"type": "string", "minLength": 1, "maxLength": 160},
+                    "entity_memory_id": {"type": "string", "format": "uuid", "description": "Existing memory that establishes the resolved entity; must be in this authorized graph."},
+                    "entity_name": {"type": "string", "minLength": 1, "maxLength": 160, "description": "Canonical full name supported by the referenced memory. Supply only after resolving identity using conversation and retrieved context."},
                     "content": {"type": "string", "minLength": 1, "maxLength": 2000},
                     "sensitivity": {
                         "type": "string",
@@ -156,14 +162,53 @@ def _node_text(node: dict[str, Any]) -> str:
     return json.dumps(node, ensure_ascii=False, sort_keys=True).lower()
 
 
+def name_terms(text: str) -> list[str]:
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return TOKEN.findall(text.casefold())
+
+
+def phonetic_key(word: str) -> str:
+    """Conservative English name candidate generation, never identity proof."""
+    word = word.replace("ph", "f").replace("ck", "k")
+    word = re.sub(r"(.)\1+", r"\1", word)
+    return word[:1] + re.sub(r"[aeiouyh]", "", word[1:])
+
+
+def node_data(node: dict[str, Any]) -> dict[str, Any]:
+    value = node.get("Data") or node.get("data") or {}
+    return value if isinstance(value, dict) else {}
+
+
+def entity_matches(nodes: list[dict[str, Any]], query: str) -> set[str]:
+    terms = set(name_terms(query))
+    matched = set()
+    for node in nodes:
+        entity = node_data(node).get("entity") or {}
+        names = [entity.get("name", ""), *entity.get("aliases", [])]
+        if any(set(name_terms(name)) & terms for name in names):
+            if entity.get("id"):
+                matched.add(entity["id"])
+    return matched
+
+
 def rank_nodes(nodes: list[dict[str, Any]], query: str, limit: int) -> list[dict[str, Any]]:
     terms = set(TOKEN.findall(query.lower()))
     ranked: list[tuple[int, dict[str, Any]]] = []
+    entities = entity_matches(nodes, query)
+    sounds = {phonetic_key(term) for term in name_terms(query) if len(term) >= 3}
     for node in nodes:
         text = _node_text(node)
-        score = sum(1 for term in terms if term in text)
+        score = len(terms & set(TOKEN.findall(text)))
+        data = node_data(node)
+        if (data.get("entity") or {}).get("id") in entities:
+            score += 10
+        # Legacy notes may mention a person in content while subject is the owner.
+        words = name_terms(str(data.get("subject", "")) + " " + str(data.get("content", "")))
+        phonetic = not score and any(len(word) >= 3 and phonetic_key(word) in sounds for word in words)
+        if phonetic:
+            score = 1
         if score:
-            ranked.append((score, node))
+            ranked.append((score, {**node, "match_kind": "phonetic_candidate" if phonetic else "keyword_or_confirmed_alias"}))
     ranked.sort(key=lambda pair: (-pair[0], _node_text(pair[1])))
     return [node for _, node in ranked[:limit]]
 
@@ -283,6 +328,7 @@ async def search_memory(settings: Settings, arguments: dict[str, Any]) -> dict[s
                 "memory_id": _node_id(node),
                 "name": node.get("Name") or node.get("name"),
                 "content": node.get("Data") or node.get("data"),
+                "match_kind": node["match_kind"],
             }
             for node in matches
         ],
@@ -383,7 +429,42 @@ def build_memory_node(settings: Settings, arguments: dict[str, Any]) -> dict[str
 
 async def store_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
     await ensure_memory_scope(settings)
+    # Validate ordinary arguments before any additional lookup.
     node = build_memory_node(settings, arguments)
+    reference = arguments.get("entity_memory_id")
+    name = str(arguments.get("entity_name", "")).strip()
+    if bool(reference) != bool(name):
+        raise ValueError("entity_reference_and_name_required_together")
+    if reference:
+        try:
+            uuid.UUID(str(reference))
+        except ValueError:
+            raise ValueError("invalid_entity_memory_id") from None
+        if len(name) > 160 or not name_terms(name):
+            raise ValueError("invalid_entity_name")
+        anchor = await get_memory(settings, {"memory_id": reference})
+        data = anchor.get("content") or {}
+        if data.get("status", "active") != "active":
+            raise ValueError("entity_reference_not_active")
+        existing = data.get("entity") or {}
+        supported = " ".join(name_terms(str(data.get("subject", "")) + " " + str(data.get("content", ""))))
+        if existing:
+            if name_terms(name) != name_terms(existing["name"]):
+                raise ValueError("entity_name_conflicts_with_reference")
+            entity_id = existing["id"]
+        else:
+            if " " + " ".join(name_terms(name)) + " " not in " " + supported + " ":
+                raise ValueError("entity_name_not_supported_by_reference")
+            # Anchor identity, not just spelling: two people can share a name.
+            entity_id = str(uuid.uuid5(uuid.UUID(settings.graph_guid), "entity:" + str(reference) + ":" + " ".join(name_terms(name))))
+        observed = str(arguments["subject"]).strip()
+        aliases = sorted(set([*existing.get("aliases", []), observed]))
+        node = build_memory_node(settings, {**arguments, "subject": name})
+        node["Data"]["entity"] = {"id": entity_id, "name": name, "aliases": aliases, "reference_memory_id": str(reference)}
+        node["Data"]["observed_subject"] = observed
+        linked_id = str(uuid.uuid5(uuid.UUID(settings.graph_guid), node["GUID"] + ":" + entity_id + ":" + observed.casefold()))
+        node["GUID"] = linked_id
+        node["Name"] = f"memory:{node['Data']['memory_type']}:{linked_id}"
     memory_id = node["GUID"]
     item_path = (
         f"/v1.0/tenants/{settings.tenant_guid}/graphs/{settings.graph_guid}"

@@ -668,6 +668,13 @@ async def run_realtime_sideband(
         onboarding_greeting_requested = False
         onboarding_greeting_completed = False
         response_active = False
+        mcp_followups = 0
+
+        async def continue_mcp() -> None:
+            nonlocal mcp_followups
+            # Permit search -> disambiguate -> store, then force a spoken answer.
+            await connection.send(json.dumps(mcp_continuation_event(mcp_followups < 3)))
+            mcp_followups += 1
         update: dict[str, Any] = {
             "type": "session.update",
             "session": {
@@ -690,6 +697,8 @@ async def run_realtime_sideband(
         async for message in connection:
             event = json.loads(message)
             kind = event_type(event)
+            if kind == "input_audio_buffer.speech_started":
+                mcp_followups = 0
             function_call = realtime_function_call_from_event(event)
             if (
                 function_call
@@ -811,7 +820,7 @@ async def run_realtime_sideband(
                     completed_call_ids = set(pending_mcp_continuations)
                     pending_mcp_continuations.clear()
                     continued_mcp_calls.update(completed_call_ids)
-                    await connection.send(json.dumps(mcp_continuation_event()))
+                    await continue_mcp()
                     LOG.info(
                         "realtime_mcp_continuation_requested call_id=%s completed_calls=%s trigger=response_done",
                         call_id,
@@ -828,7 +837,7 @@ async def run_realtime_sideband(
                         )
                     else:
                         continued_mcp_calls.add(mcp_call_id)
-                        await connection.send(json.dumps(mcp_continuation_event()))
+                        await continue_mcp()
                         LOG.info(
                             "realtime_mcp_continuation_requested call_id=%s completed_calls=1 trigger=mcp_call_completed",
                             call_id,
@@ -877,9 +886,7 @@ async def run_realtime_sideband(
                             )
                         else:
                             continued_mcp_calls.add(mcp_call_id)
-                            await connection.send(
-                                json.dumps(mcp_continuation_event())
-                            )
+                            await continue_mcp()
                             LOG.info(
                                 "realtime_mcp_continuation_requested call_id=%s completed_calls=1 trigger=output_item_done",
                                 call_id,
@@ -925,19 +932,23 @@ async def run_realtime_sideband(
                 )
 
 
-def mcp_continuation_event() -> dict[str, Any]:
+def mcp_continuation_event(allow_followup: bool = False) -> dict[str, Any]:
     """Create the one-shot response that verbalizes a completed MCP result."""
     return {
         "type": "response.create",
         "response": {
             "instructions": (
-                "The requested memory lookup has completed. Immediately answer the "
+                "The memory tool has completed. Immediately answer the "
                 "caller's pending question using the tool result already in the "
-                "conversation. Do not call another tool, wait for more speech, mention "
-                "the lookup process, or repeat a greeting. If the result contains no "
-                "answer, say so briefly."
+                "conversation, or briefly acknowledge a successful save. "
+                + ("If an entity lookup or authorized memory write is still necessary, "
+                   "perform only that next step, then speak without waiting for the caller. "
+                   "Do not repeat completed searches or writes. " if allow_followup else
+                   "Do not call another tool. If work is incomplete, say so honestly. ")
+                + "Do not wait for more speech or repeat a greeting. "
+                "Never claim a save succeeded without a successful tool result."
             ),
-            "tool_choice": "none",
+            "tool_choice": "auto" if allow_followup else "none",
         },
     }
 

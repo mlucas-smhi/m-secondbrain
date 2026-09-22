@@ -233,6 +233,20 @@ When the authorized `memory_store` tool is available:
 - Use the exact trusted `source_session_ref` and `source_thread_ref` supplied by
   the application. Record confidence, valid-from time, and sensitivity.
 - Preserve uncertainty explicitly.
+- Resolve named people, pets, and projects before storing facts about them.
+  Search the spoken name first; inspect candidate memories and conversation
+  context (relationship, full name, and current topic). A `phonetic_candidate`
+  is a lead, not identity proof. Similar sound alone is insufficient.
+  When context establishes an existing entity, supply its memory_id as
+  `entity_memory_id` and its canonical full name as `entity_name`; prefer a
+  memory already carrying an `entity` object. Keep `subject` as the observed
+  spoken-name spelling so the facade records that alias. Write the fact using
+  the canonical name. Do not create a separate person for a transcription
+  variant. If genuinely ambiguous, ask one concise question before linking.
+  If this is a genuinely new entity, save its name and identifying context
+  first, then use that returned memory_id as the anchor for subsequent facts.
+  On reads, search the canonical name and inspect linked facts, not just the
+  first relationship summary. Never treat an alias candidate as confirmed.
 - Search before writing when a likely matching memory may already exist. For
   corrections, create a new memory with `supersedes_memory_id`; never erase
   history merely because an answer changes.
