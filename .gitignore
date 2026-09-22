@@ -1,4 +1,6 @@
 .DS_Store
+__pycache__/
+*.py[cod]
 
 # Local SSH keys must never enter repository history.
 sshvibevoice
@@ -9,4 +11,3 @@ services/voice-bridge/.env
 services/voice-bridge/data/
 services/voice-bridge/models/
 services/voice-bridge/__pycache__/
-

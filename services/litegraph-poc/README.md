@@ -12,6 +12,10 @@ load real or sensitive memory. Persistent deployment requires PostgreSQL.
 The public MCP endpoint is `https://<fqdn>/mcp`. `/rpc`, `/events`, REST port
 8701, TCP port 8703, and WebSocket port 8704 are not exposed.
 
+The read-only voice-agent facade is exposed at
+`https://<fqdn>/memory-mcp` behind the same bearer-token gateway. It publishes
+only `memory_search` and `memory_get`; tenant and graph scope are server-bound.
+
 ## Deploy
 
 Choose a globally unique lowercase storage-account name (3-24 characters):

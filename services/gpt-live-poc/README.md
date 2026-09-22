@@ -24,9 +24,12 @@ Streamable HTTP endpoint ending in `/mcp`; `/rpc` is the legacy Voltaic
 compatibility endpoint.
 
 Set `MCP_SERVER_URL`, the secret raw access token in `MCP_AUTHORIZATION`, and an
-explicit comma-separated `MCP_ALLOWED_TOOLS` list. Keep that list read-only.
-The model never receives unrestricted LiteGraph tools, and the working
-Live/GitHub canary remains available for rollback.
+explicit comma-separated `MCP_ALLOWED_TOOLS` list. For onboarding, use only
+`memory_search,memory_get,memory_store`. The facade makes `memory_store`
+append-only, graph-bound, idempotent, provenance-required, and Level 3 by
+default; it does not expose arbitrary node mutation or deletion. The model
+never receives unrestricted LiteGraph tools, and the working Live/GitHub
+canary remains available for rollback.
 
 The Realtime identity, memory doctrine, trust boundaries, tool etiquette, and
 voice direction live in `live_poc/two-realtime-prompt.md`. Keep operational
@@ -41,8 +44,10 @@ allowlisted E.164 number is supplied by the trusted bridge; the model supplies
 only the six-digit code it heard.
 
 Before confirmation, the session receives the onboarding prompt and one local
-function: `validate_onboarding_code`. LiteGraph MCP tools are withheld. The
-bridge sends the code to the Supabase verification function, which atomically
+function: `validate_onboarding_code`. LiteGraph MCP tools are withheld. After
+confirmation, the scoped memory facade is attached and trusted session/thread
+references are supplied for provenance. The bridge sends the code to the
+Supabase verification function, which atomically
 returns the permanent actor, workspace, onboarding session, trust session, and
 durable thread. After confirmation the bridge removes the validation tool,
 marks the runtime context confirmed, and begins topic 1. Internal identifiers

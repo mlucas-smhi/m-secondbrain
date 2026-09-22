@@ -27,7 +27,9 @@ from live_poc.app import (
     onboarding_response_instructions,
     onboarding_turn_detection_config,
     realtime_call_payload,
+    realtime_compatible_tools,
     realtime_function_call_from_event,
+    realtime_memory_tools,
     validate_memory_path,
     twilio_dial_result,
     twilio_inbound,
@@ -168,6 +170,23 @@ class SessionPayloadTests(unittest.TestCase):
     def test_realtime_payload_omits_incomplete_mcp_configuration(self) -> None:
         payload = realtime_call_payload(Settings("key", "secret", voice_api="realtime"))
         self.assertNotIn("tools", payload)
+
+    def test_realtime_compatible_memory_tool_keeps_scoped_write_catalog(self) -> None:
+        settings = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            mcp_server_url="https://memory.example.com/mcp",
+            mcp_authorization="memory-token",
+            mcp_allowed_tools=("memory_search", "memory_get", "memory_store"),
+            mcp_enforce_approval_gate=False,
+        )
+        tools = realtime_compatible_tools(settings, realtime_memory_tools(settings))
+        self.assertEqual(len(tools), 1)
+        self.assertEqual(tools[0]["type"], "mcp")
+        self.assertEqual(tools[0]["require_approval"], "never")
+        self.assertNotIn("allowed_tools", tools[0])
+        self.assertNotIn("defer_loading", tools[0])
 
     def test_onboarding_withholds_memory_until_backend_confirmation(self) -> None:
         settings = Settings(

@@ -106,18 +106,19 @@ sentence. Do not pressure them to continue.
 Treat onboarding answers as candidate long-term memories, not as one giant
 profile document.
 
-When authorized memory-write tools are available:
+When the authorized `memory_store` tool is available:
 
-- Create or update canonical entities rather than producing duplicates.
+- Store one atomic fact per tool call rather than a bundled profile.
 - Store durable facts, preferences, relationships, commitments, current
   priorities, and integration intentions as atomic memories.
-- Record source session, source actor, confidence, valid-from time, sensitivity,
-  and status.
+- Use the exact trusted `source_session_ref` and `source_thread_ref` supplied by
+  the application. Record confidence, valid-from time, and sensitivity.
 - Preserve uncertainty explicitly.
-- Use supersession for corrections; do not erase history merely because an
-  answer changes.
+- Search before writing when a likely matching memory may already exist. For
+  corrections, create a new memory with `supersedes_memory_id`; never erase
+  history merely because an answer changes.
 - Default personal onboarding memories to owner-only sensitivity until the user
-  deliberately grants broader access.
+  deliberately grants broader access. In this system, owner-only is `level_3`.
 
 The user does not need to say "remember this." Proactively capture durable,
 high-confidence information that will improve future continuity when policy

@@ -334,7 +334,7 @@ def realtime_memory_tools(settings: Settings) -> list[dict[str, Any]]:
             "type": "mcp",
             "server_label": "litegraph_memory",
             "server_description": (
-                "Read-only access to authorized personal memory in LiteGraph."
+                "Scoped access to authorized personal memory in LiteGraph."
             ),
             "server_url": settings.mcp_server_url,
             "defer_loading": True,
@@ -367,12 +367,18 @@ def realtime_call_payload(settings: Settings) -> dict[str, Any]:
     instructions = TWO_REALTIME_PROMPT
     if settings.mcp_tenant_guid and settings.mcp_graph_guid:
         instructions += "\n\nThe memory server binds every request to the authorized tenant and graph."
-    if set(settings.mcp_allowed_tools) == {"memory_search", "memory_get"}:
+    if {"memory_search", "memory_get"}.issubset(set(settings.mcp_allowed_tools)):
         instructions += (
             " For a memory lookup, call memory_search with the caller's natural "
             "language request. Use memory_get only when search returns a memory_id "
-            "whose full content is needed. These are the only available operations."
+            "whose full content is needed."
         )
+        if "memory_store" in settings.mcp_allowed_tools:
+            instructions += (
+                " Use memory_store proactively for durable, high-confidence facts "
+                "when policy permits. Store one atomic memory per call and default "
+                "personal information to level_3 sensitivity."
+            )
     elif settings.mcp_tenant_guid and settings.mcp_graph_guid:
         instructions += (
             f" Use tenant GUID {settings.mcp_tenant_guid} and graph GUID "
@@ -618,35 +624,36 @@ async def accept_realtime_call(settings: Settings, call_id: str) -> None:
         await run_realtime_sideband(settings, call_id, tools, tool_choice)
 
 
+def realtime_compatible_tools(
+    settings: Settings, tools: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Remove Responses-only MCP fields before a Realtime session.update."""
+    unsupported_fields = {
+        "server_description",
+        "defer_loading",
+        # The deployed Realtime schema rejects this Responses-style wrapper.
+        # The facade itself exposes only the scoped catalog we authorize.
+        "allowed_tools",
+    }
+    compatible = [
+        {key: value for key, value in tool.items() if key not in unsupported_fields}
+        for tool in tools
+    ]
+    for tool in compatible:
+        if tool.get("type") == "mcp":
+            tool["require_approval"] = (
+                "always" if settings.mcp_enforce_approval_gate else "never"
+            )
+    return compatible
+
+
 async def run_realtime_sideband(
     settings: Settings,
     call_id: str,
     tools: list[dict[str, Any]],
     tool_choice: str | None,
 ) -> None:
-    # Realtime session.update rejects optional Responses API metadata fields
-    # even though the MCP connection and authorization fields are supported.
-    realtime_unsupported_fields = {
-        "server_description",
-        "defer_loading",
-        # Realtime validates allowlist entries as function names and rejects
-        # LiteGraph's native slash-delimited MCP names. Discover all tools and
-        # enforce the read-only allowlist through approval responses instead.
-        "allowed_tools",
-    }
-    realtime_tools = [
-        {
-            key: value
-            for key, value in tool.items()
-            if key not in realtime_unsupported_fields
-        }
-        for tool in tools
-    ]
-    for tool in realtime_tools:
-        if tool.get("type") == "mcp":
-            tool["require_approval"] = (
-                "always" if settings.mcp_enforce_approval_gate else "never"
-            )
+    realtime_tools = realtime_compatible_tools(settings, tools)
     url = f"wss://api.openai.com/v1/realtime?call_id={call_id}"
     async with connect(
         url,
@@ -711,6 +718,10 @@ async def run_realtime_sideband(
                     )
                 )
                 if status == "confirmed":
+                    authorized_memory_tools = realtime_compatible_tools(
+                        settings, realtime_memory_tools(settings)
+                    )
+                    authorized_names = ", ".join(settings.mcp_allowed_tools) or "none"
                     trusted_context = (
                         TWO_ONBOARDING_PROMPT
                         + "\n\nTrusted runtime context supplied by the backend:\n"
@@ -720,8 +731,13 @@ async def run_realtime_sideband(
                         + f"- thread_id: {result.get('thread_id', '')}\n"
                         + f"- onboarding_session_id: {result.get('onboarding_session_id', '')}\n"
                         + "- onboarding_status: in_progress\n"
-                        + "- authorized_memory_tools: none\n"
-                        + "Do not disclose internal identifiers. Continue onboarding naturally."
+                        + f"- authorized_memory_tools: {authorized_names}\n"
+                        + f"- source_session_ref for memory writes: {call_id}\n"
+                        + f"- source_thread_ref for memory writes: {result.get('thread_id', '')}\n"
+                        + "Do not disclose internal identifiers. Use memory_store "
+                        + "proactively for durable, high-confidence onboarding facts, one "
+                        + "atomic fact per call, defaulting to level_3 sensitivity. Continue "
+                        + "onboarding naturally."
                     )
                     await connection.send(
                         json.dumps(
@@ -730,8 +746,10 @@ async def run_realtime_sideband(
                                 "session": {
                                     "type": "realtime",
                                     "instructions": trusted_context,
-                                    "tools": [],
-                                    "tool_choice": "none",
+                                    "tools": authorized_memory_tools,
+                                    "tool_choice": (
+                                        "auto" if authorized_memory_tools else "none"
+                                    ),
                                 },
                             }
                         )

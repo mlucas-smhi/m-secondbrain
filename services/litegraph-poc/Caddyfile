@@ -16,5 +16,13 @@
 		reverse_proxy 127.0.0.1:8702
 	}
 
+	handle /memory-mcp* {
+		@unauthorized not header Authorization "Bearer {$MCP_EDGE_TOKEN}"
+		respond @unauthorized 401
+
+		rewrite * /mcp
+		reverse_proxy 127.0.0.1:8710
+	}
+
 	respond 404
 }

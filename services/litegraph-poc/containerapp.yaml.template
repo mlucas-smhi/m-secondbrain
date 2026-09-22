@@ -47,6 +47,24 @@ properties:
         resources:
           cpu: 0.5
           memory: 1Gi
+      - name: memory-facade
+        image: __MEMORY_FACADE_IMAGE__
+        env:
+          - name: LITEGRAPH_ENDPOINT
+            value: http://127.0.0.1:8701
+          - name: LITEGRAPH_API_KEY
+            secretRef: litegraph-admin-token
+          - name: MCP_TENANT_GUID
+            value: __MCP_TENANT_GUID__
+          - name: MCP_GRAPH_GUID
+            value: __MCP_GRAPH_GUID__
+          - name: PORT
+            value: "8710"
+          - name: UPSTREAM_TIMEOUT_SECONDS
+            value: "5"
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
       - name: mcp-gateway
         image: caddy:2.10-alpine
         command: ["caddy"]
