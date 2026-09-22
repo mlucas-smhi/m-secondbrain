@@ -127,7 +127,7 @@ class SessionPayloadTests(unittest.TestCase):
         session = payload["session"]
         self.assertEqual(session["type"], "live")
         self.assertEqual(session["model"], "gpt-live-1")
-        self.assertEqual(session["audio"]["output"]["voice"], "willow")
+        self.assertEqual(session["audio"]["output"]["voice"], "sage")
         self.assertIn("read-only", session["instructions"])
 
     def test_adds_only_read_memory_when_github_is_enabled(self) -> None:

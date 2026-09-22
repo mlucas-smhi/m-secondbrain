@@ -112,7 +112,7 @@ class Settings:
     openai_api_key: str
     openai_webhook_secret: str
     model: str = "gpt-live-1"
-    voice: str = "willow"
+    voice: str = "sage"
     backend_model: str = "gpt-5-mini"
     port: int = 8090
     github_token: str | None = None
@@ -154,7 +154,7 @@ class Settings:
             openai_api_key=required["OPENAI_API_KEY"],
             openai_webhook_secret=required["OPENAI_WEBHOOK_SECRET"],
             model=os.getenv("GPT_LIVE_MODEL", "gpt-live-1").strip(),
-            voice=os.getenv("GPT_LIVE_VOICE", "willow").strip(),
+            voice=os.getenv("GPT_LIVE_VOICE", "sage").strip(),
             backend_model=os.getenv("GPT_LIVE_BACKEND_MODEL", "gpt-5-mini").strip(),
             port=int(os.getenv("PORT", "8090")),
             github_token=os.getenv("GITHUB_TOKEN") or None,
