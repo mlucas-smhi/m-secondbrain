@@ -265,7 +265,8 @@ class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
     def test_confirmed_onboarding_result_starts_topic_one(self) -> None:
         instructions = onboarding_response_instructions("confirmed")
         self.assertIn("Code confirmed", instructions)
-        self.assertIn("begin topic 1", instructions)
+        self.assertIn("what should I call you?", instructions)
+        self.assertNotIn("begin topic 1", instructions)
 
     async def test_rejects_unknown_tool_without_calling_github(self) -> None:
         output = await execute_memory_call(

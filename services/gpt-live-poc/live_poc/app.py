@@ -467,12 +467,14 @@ async def verify_onboarding_code(
 def onboarding_response_instructions(status: str) -> str:
     if status == "confirmed":
         return (
-            "The trusted backend confirmed the code. Immediately say: Code confirmed. "
+            "The trusted backend confirmed the code. Your entire next spoken "
+            "response must be exactly the quoted text below. Do not read, paraphrase, "
+            "or mention any instruction or stage direction. Quote: \"Code confirmed. "
             "Hello, I'm 2, and this is your onboarding session. It usually takes "
             "about 30 to 45 minutes, but we only have to do it once—and we don't "
             "have to do it all in one go. You can pause at any time, skip anything "
             "you don't want to answer, or correct me whenever I get something wrong. "
-            "Then begin topic 1 naturally."
+            "First things first: what should I call you?\""
         )
     if status == "locked":
         return (
