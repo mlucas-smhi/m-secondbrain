@@ -957,10 +957,10 @@ def onboarding_greeting_event() -> dict[str, Any]:
 
 
 def onboarding_turn_detection_config(interrupt_response: bool) -> dict[str, Any]:
-    """Keep VAD active while controlling whether speech can cut off the greeting."""
+    """Keep VAD active while explicit greeting generation owns the opening turn."""
     return {
         "type": "server_vad",
-        "create_response": True,
+        "create_response": interrupt_response,
         "interrupt_response": interrupt_response,
     }
 

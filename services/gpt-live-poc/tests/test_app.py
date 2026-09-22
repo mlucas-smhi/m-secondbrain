@@ -221,8 +221,9 @@ class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
         protected = onboarding_turn_detection_config(interrupt_response=False)
         normal = onboarding_turn_detection_config(interrupt_response=True)
         self.assertEqual(protected["type"], "server_vad")
-        self.assertTrue(protected["create_response"])
+        self.assertFalse(protected["create_response"])
         self.assertFalse(protected["interrupt_response"])
+        self.assertTrue(normal["create_response"])
         self.assertTrue(normal["interrupt_response"])
 
     def test_mcp_continuation_forces_a_spoken_answer_without_another_tool(self) -> None:
