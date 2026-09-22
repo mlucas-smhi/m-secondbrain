@@ -106,8 +106,9 @@ class FacadeTests(unittest.IsolatedAsyncioTestCase):
         settings = Settings(
             "http://litegraph", "key", str(uuid.UUID(int=1)), str(uuid.UUID(int=2))
         )
-        missing = LiteGraphHttpError(404, "not found")
-        request = AsyncMock(side_effect=[missing, None, missing, None])
+        tenant_missing = LiteGraphHttpError(404, "not found")
+        graph_missing = LiteGraphHttpError(400)
+        request = AsyncMock(side_effect=[tenant_missing, None, graph_missing, None])
         with patch("memory_facade.app.litegraph_request", new=request):
             await ensure_memory_scope(settings)
 

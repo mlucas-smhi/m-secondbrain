@@ -192,14 +192,17 @@ async def litegraph_request(
             return json.loads(body) if body else None
 
 
-async def _resource_exists(settings: Settings, path: str) -> bool:
+async def _resource_exists(
+    settings: Settings,
+    path: str,
+    *,
+    missing_statuses: frozenset[int] = frozenset({404}),
+) -> bool:
     try:
         await litegraph_request(settings, "HEAD", path)
         return True
     except LiteGraphHttpError as error:
-        if error.status == 404:
-            return False
-        if error.status == 400 and "no graph with guid" in error.detail.lower():
+        if error.status in missing_statuses:
             return False
         raise
 
@@ -231,7 +234,9 @@ async def ensure_memory_scope(settings: Settings) -> None:
     graph_path = (
         f"/v1.0/tenants/{settings.tenant_guid}/graphs/{settings.graph_guid}"
     )
-    if not await _resource_exists(settings, graph_path):
+    if not await _resource_exists(
+        settings, graph_path, missing_statuses=frozenset({400, 404})
+    ):
         try:
             await litegraph_request(
                 settings,
