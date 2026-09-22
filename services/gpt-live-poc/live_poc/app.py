@@ -657,6 +657,7 @@ async def run_realtime_sideband(
         continued_mcp_calls: set[str] = set()
         pending_mcp_continuations: set[str] = set()
         onboarding_greeting_requested = False
+        onboarding_greeting_completed = False
         response_active = False
         update: dict[str, Any] = {
             "type": "session.update",
@@ -665,6 +666,14 @@ async def run_realtime_sideband(
                 "tools": realtime_tools,
             },
         }
+        if settings.onboarding_enabled:
+            update["session"]["audio"] = {
+                "input": {
+                    "turn_detection": onboarding_turn_detection_config(
+                        interrupt_response=False
+                    )
+                }
+            }
         if tool_choice:
             update["session"]["tool_choice"] = tool_choice
         await connection.send(json.dumps(update))
@@ -754,6 +763,30 @@ async def run_realtime_sideband(
                 response_active = True
             elif kind == "response.done":
                 response_active = False
+                if (
+                    settings.onboarding_enabled
+                    and onboarding_greeting_requested
+                    and not onboarding_greeting_completed
+                ):
+                    onboarding_greeting_completed = True
+                    await connection.send(
+                        json.dumps(
+                            {
+                                "type": "session.update",
+                                "session": {
+                                    "type": "realtime",
+                                    "audio": {
+                                        "input": {
+                                            "turn_detection": onboarding_turn_detection_config(
+                                                interrupt_response=True
+                                            )
+                                        }
+                                    },
+                                },
+                            }
+                        )
+                    )
+                    LOG.info("onboarding_barge_in_enabled call_id=%s", call_id)
                 if pending_mcp_continuations:
                     completed_call_ids = set(pending_mcp_continuations)
                     pending_mcp_continuations.clear()
@@ -895,13 +928,20 @@ def onboarding_greeting_event() -> dict[str, Any]:
         "type": "response.create",
         "response": {
             "instructions": (
-                "The call has just connected. Speak first. Introduce yourself and ask "
-                "for the validation code by saying exactly: Hello, I'm 2. What's your "
-                "validation code? Do not wait for the caller to greet you, begin "
-                "onboarding, reveal context, or call a tool yet."
+                "Speak first. Say exactly this once and say nothing else: "
+                "Hello, I'm 2. What's your validation code?"
             ),
             "tool_choice": "none",
         },
+    }
+
+
+def onboarding_turn_detection_config(interrupt_response: bool) -> dict[str, Any]:
+    """Keep VAD active while controlling whether speech can cut off the greeting."""
+    return {
+        "type": "server_vad",
+        "create_response": True,
+        "interrupt_response": interrupt_response,
     }
 
 

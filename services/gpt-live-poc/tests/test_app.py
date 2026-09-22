@@ -23,8 +23,9 @@ from live_poc.app import (
     inbound_twiml,
     live_session_payload,
     mcp_continuation_event,
-    onboarding_response_instructions,
     onboarding_greeting_event,
+    onboarding_response_instructions,
+    onboarding_turn_detection_config,
     realtime_call_payload,
     realtime_function_call_from_event,
     validate_memory_path,
@@ -195,6 +196,15 @@ class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["response"]["tool_choice"], "none")
         self.assertIn("Speak first", event["response"]["instructions"])
         self.assertIn("Hello, I'm 2", event["response"]["instructions"])
+        self.assertIn("exactly this once", event["response"]["instructions"])
+
+    def test_onboarding_greeting_temporarily_disables_barge_in(self) -> None:
+        protected = onboarding_turn_detection_config(interrupt_response=False)
+        normal = onboarding_turn_detection_config(interrupt_response=True)
+        self.assertEqual(protected["type"], "server_vad")
+        self.assertTrue(protected["create_response"])
+        self.assertFalse(protected["interrupt_response"])
+        self.assertTrue(normal["interrupt_response"])
 
     def test_mcp_continuation_forces_a_spoken_answer_without_another_tool(self) -> None:
         event = mcp_continuation_event()
