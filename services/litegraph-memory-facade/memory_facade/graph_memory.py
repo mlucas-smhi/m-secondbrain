@@ -27,6 +27,11 @@ def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
+def canonical_predicate(value: str) -> str:
+    return next((name for name, definition in REGISTRY['predicates'].items()
+                 if value in definition['aliases']), value)
+
+
 def guid(value: Any) -> str:
     try:
         return str(uuid.UUID(str(value)))
@@ -242,10 +247,7 @@ class GraphMemory:
             predicate = text(fact["predicate"], "predicate", 64)
             if not KEY.fullmatch(predicate):
                 raise ValueError("invalid_predicate")
-            for approved, definition in REGISTRY["predicates"].items():
-                if predicate in definition["aliases"]:
-                    predicate = approved
-                    break
+            predicate = canonical_predicate(predicate)
             definition = REGISTRY["predicates"].get(predicate)
             value, object_id = None, None
             if "object" in fact:
@@ -276,7 +278,7 @@ class GraphMemory:
                 prior = await self.read(previous)
                 pd = data(prior or {})
                 if (pd.get("kind") != "Fact" or pd.get("subject_ref") != subject
-                    or pd.get("predicate") != predicate or previous in superseded):
+                    or canonical_predicate(pd.get("predicate")) != predicate or previous in superseded):
                     raise ValueError("invalid_supersession_target")
                 if start < instant(pd["valid_from"]):
                     raise ValueError("supersession_precedes_original")

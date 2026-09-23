@@ -1,5 +1,5 @@
 {
-  "version": "entity-foundation.v1",
+  "version": "entity-foundation.v1.1",
   "families": {
     "person": {"label": "Person", "authority": "memory", "boundary": "An individual; CEO and partner are roles, not person subtypes."},
     "animal": {"label": "Animal", "authority": "memory", "boundary": "An individually meaningful animal, not a species."},
@@ -27,7 +27,10 @@
     "has_role": {"aliases": [], "literal": true},
     "interested_in": {"aliases": ["enjoys"], "object_families": ["activity", "topic", "content", "asset"]},
     "dietary_preference": {"aliases": [], "literal": true},
-    "communication_preference": {"aliases": [], "literal": true},
+    "communication_preference": {"aliases": ["real_time_communication_style_preference", "project_and_personal_communication_style_preference", "primary_communication_channels", "fallback_communication_channel", "urgent_message_preference", "quiet_hours_policy", "proactive_contact_preference"], "literal": true, "description": "Channel order, conversation style, urgency, quiet hours and proactive-contact preferences. Preserve each facet and every condition in value/content. These are preferences, NOT operational permission grants. Different facets coexist; do not supersede one merely because another uses this predicate."},
+    "time_zone": {"aliases": ["timezone", "working_time_zone"], "literal": true, "description": "The person's stated working/home time zone at its stated precision. Do not invent an IANA zone or DST rules."},
+    "collaborates_with_people_in": {"aliases": ["works_with_people_in_place"], "object_families": ["place"], "description": "Person has collaborators in a stated Place; does not imply that person lives or works physically there."},
+    "work_geography": {"aliases": [], "literal": true, "description": "Broad geographic scope of work/collaborators, e.g. worldwide. Do not manufacture a planet Entity for conversational phrasing."},
     "related_to": {"aliases": [], "object_families": ["person", "animal"]},
     "prefers": {"aliases": [], "literal": true},
     "context_for": {"aliases": [], "object_families": ["task", "decision", "transaction", "interaction"]}

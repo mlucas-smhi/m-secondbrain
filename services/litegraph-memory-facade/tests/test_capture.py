@@ -179,19 +179,46 @@ class DurableCaptureTests(unittest.IsolatedAsyncioTestCase):
         model=type('Model',(),{'extract':AsyncMock(return_value=[unit('Example A is vegan.'),unit('Example B likes hiking.')])})()
         worker=CaptureWorker(self.queue,model,self.graph)
         invalid=prepared('Example B'); invalid['facts'][0]['object']='person'
-        worker.resolver.prepare=AsyncMock(side_effect=[{'bundle':prepared()},{'bundle':invalid}])
+        worker.resolver.prepare=AsyncMock(side_effect=[{'bundle':prepared()},{'bundle':invalid},{'bundle':invalid}])
         await worker.process(await self.queue.claim())
         status=(await self.queue.status({}))['captures'][0]
         self.assertEqual(status['saved_fact_count'],1)
-        self.assertEqual(status['state'],'pending')
-        async with self.queue.connection() as c:
-            await c.execute('UPDATE litegraph_two_poc.memory_captures SET available_at=now() WHERE workspace_id=%s',(self.workspace,))
-        worker.resolver.prepare=AsyncMock(return_value={'bundle':invalid})
-        await worker.process(await self.queue.claim())
-        status=(await self.queue.status({}))['captures'][0]
         self.assertEqual(status['state'],'partial')
         self.assertEqual(status['saved_fact_count'],1)
         self.assertEqual(len(status['unresolved']),1)
+        self.assertEqual(worker.resolver.prepare.await_count,3)
+
+    async def test_definite_rejection_is_repaired_without_job_backoff(self):
+        await self.queue.capture(arguments('Example A is vegan.'))
+        model=AsyncMock(); model.extract.return_value=[unit('Example A is vegan.')]
+        worker=CaptureWorker(self.queue,model,self.graph)
+        invalid=prepared(); invalid['facts'][0]['object']='person'
+        worker.resolver.prepare=AsyncMock(side_effect=[{'bundle':invalid},{'bundle':prepared()}])
+        job=await self.queue.claim()
+        await worker.process(job)
+        result=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(result['state'],'complete')
+        self.assertEqual(job['attempts'],1)
+        self.assertNotIn('error',worker.resolver.prepare.call_args.args[1])
+        self.assertEqual(worker.resolver.prepare.await_count,2)
+
+    async def test_uncertain_store_keeps_payload_and_uses_backoff(self):
+        await self.queue.capture(arguments('Example A is vegan.'))
+        model=AsyncMock(); model.extract.return_value=[unit('Example A is vegan.')]
+        worker=CaptureWorker(self.queue,model,self.graph)
+        worker.resolver.prepare=AsyncMock(return_value={'bundle':prepared()})
+        self.graph.store=AsyncMock(side_effect=RuntimeError('Unknown commit outcome'))
+        job=await self.queue.claim()
+        await worker.process(job)
+        result=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(result['state'],'pending')
+        self.assertEqual(self.graph.store.await_count,1)
+        self.assertEqual(worker.resolver.prepare.await_count,1)
+        async with self.queue.connection() as c:
+            row=await (await c.execute('SELECT plan,available_at>now() AS deferred FROM litegraph_two_poc.memory_captures WHERE id=%s',(job['id'],))).fetchone()
+        self.assertEqual(row['plan'][0]['state'],'prepared')
+        self.assertEqual(row['plan'][0]['prepared'],self.graph.store.call_args.args[0])
+        self.assertTrue(row['deferred'])
 
     async def test_restart_after_graph_commit_replays_prepared_payload_without_duplicate(self):
         await self.queue.capture(arguments('Example A is vegan.'))

@@ -195,6 +195,28 @@ class GraphMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data(self.backend.nodes[result["memory_ids"][0]])["predicate"], "lives_in")
         self.assertEqual(data(self.backend.nodes[result["memory_ids"][0]])["evidence"], args["facts"][0]["evidence"])
 
+    async def test_explicit_correction_can_target_legacy_preference_alias(self):
+        args=bundle(); args['entities']=args['entities'][:1]
+        args['facts']=[{**args['facts'][2], 'predicate':'communication_preference',
+            'value':'phone first for urgent messages','content':'Andrew prefers phone first for urgent messages.'}]
+        saved=await self.graph.store(args)
+        prior_id=saved['memory_ids'][0]
+        # Reproduce an immutable fact written before the approved alias existed.
+        self.backend.nodes[prior_id]['Data']['predicate']='urgent_message_preference'
+        self.backend.nodes[prior_id]['Data']['classification_status']='pending'
+        prior=copy.deepcopy(self.backend.nodes[prior_id])
+        change=copy.deepcopy(args)
+        change['source_ref']='later-call'; change['idempotency_key']='urgent-correction'
+        change['entities'][0]['existing_id']=saved['entities']['andrew']['id']
+        change['facts'][0].update(value='text first for urgent messages',
+            content='Andrew now prefers text first for urgent messages.',
+            evidence='For urgent messages use text first instead of phone.',supersedes_memory_id=prior_id)
+        result=await self.graph.store(change)
+        self.assertEqual(self.backend.nodes[prior_id],prior)
+        self.assertEqual(result['classification_pending'],[])
+        recalled=await self.graph.context(saved['entities']['andrew']['id'])
+        self.assertEqual([n['GUID'] for n in recalled['facts']],result['memory_ids'])
+
     async def test_wrong_scope_reference_rejected_without_write(self):
         first = await self.graph.store(bundle())
         entity = self.backend.nodes[first["entities"]["andrew"]["id"]]

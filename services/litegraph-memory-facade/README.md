@@ -4,10 +4,11 @@ Scoped MCP facade for voice agents. It exposes `memory_search`, `memory_get`,
 and append-only `memory_store`, binds all requests to one configured tenant and
 graph, and calls the private LiteGraph REST service with bounded timeouts.
 
-An opt-in **conversational capture** path is implemented but not deployed. It
+The opt-in **conversational capture** path was deployed to the POC on 2026-09-23. It
 replaces public graph writes with a durable PostgreSQL inbox and a background
 fact writer. See [CONVERSATIONAL_CAPTURE.md](CONVERSATIONAL_CAPTURE.md) for
-semantics, configuration, tests, limitations and the remaining rollout gates.
+semantics, configuration, tests, limitations and the deployment record. Later
+writer-only fixes in that document remain staged until explicitly deployed.
 
 ## Entity graph mode — implemented locally, opt-in
 

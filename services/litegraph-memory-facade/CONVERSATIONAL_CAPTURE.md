@@ -1,8 +1,9 @@
-# Conversational capture — staged, NOT deployed
+# Conversational capture
 
-The current production POC still uses direct graph writes. This implementation
-separates natural-language capture from graph formatting, but must not be enabled
-until the real-model evaluation and scoped rollout checks pass.
+The POC capture path was deployed on 2026-09-23 after the real-model evaluation
+gate. It separates natural-language capture from background graph formatting.
+See [deployment and live-call verification](CAPTURE-ROLLOUT-2026-09-23.md).
+Automated checks do not replace the pending real two-call acceptance test.
 
 ## Flow and semantics
 
@@ -116,6 +117,9 @@ Durable onboarding-topic checkpoint writes remain a separate unfinished feature.
    project; do not place keys in source, CLI arguments or logs.
 4. Deploy facade with `GRAPH_MEMORY_ENABLED=true`, `MEMORY_CAPTURE_ENABLED=true`,
    existing graph/owner/workspace unchanged, and `MEMORY_WRITER_MODEL` configured.
+   `MEMORY_ASSISTANT_NAME` supplies trusted writer-only service identity (default
+   `2`). It is not accepted from tool arguments, creates no Person entity, and
+   conveys no operational authority. It does not change the voice prompt.
    Direct `memory_store` is then hidden AND rejected externally; only the worker
    calls the existing graph writer internally. Missing DB readiness fails startup.
 5. Deploy voice with `MEMORY_SCHEMA_MODE=conversational-capture.v1` and allowed
@@ -201,8 +205,70 @@ scope isolation, result bounds, failed/partial visibility, current-fact lookup,
 and no promotion of pending source to completed graph memory. Model-double tests
 do not substitute for real-model quality gates.
 
-No live deployment, queue migration, credential changes, or personal-memory
-writes were performed for this feature. Existing deployed behavior is unchanged.
+The above measurements preceded activation. See the linked deployment record for
+the subsequent 2026-09-23 rollout and its preservation/readiness checks.
+
+## Writer-only follow-up — staged, not deployed
+
+The first real call produced seven durable captures, six completed and one awaiting
+clarification. The writer lacked the assistant identity, used overly specific
+unregistered labels for ordinary preferences, and deferred a correctable validation
+error to another job attempt. The following changes leave the entire voice service,
+intro, onboarding script, personality and voice configuration untouched:
+
+- Give extraction, resolution and both reviewers trusted assistant identity.
+  Conditional contact preferences remain facts about the caller, never grants to
+  execute phone/text actions. Explicitly different people still need resolution.
+- Supply the complete approved predicate registry to the resolver. Registry v1.1
+  maps known communication-preference aliases, adds stated time zones, and separates
+  collaborator-place links from broad work geography. Unknown meanings stay pending.
+- Expand extracted relationship target lists into independently required graph links,
+  as with event participants/destinations. This prevents a supplied list from becoming
+  a single link with other targets mentioned only in prose. Extraction can still omit
+  source particulars; this is not proof of exhaustive audio/transcript coverage.
+  Expansion is restricted to precise residence, employment, interest and collaborator-
+  location predicates. A tested generic `related_to` variant lost partner/boss meaning
+  and was rejected; those interpersonal relationships keep their precise unit semantics.
+- Reject mismatched supersession targets before graph I/O and semantic review;
+  review corrections against the previous fact's actual facet, not merely a shared
+  broad predicate. Known legacy aliases work for recall and explicit corrections
+  without rewriting existing immutable facts or save receipts.
+- Repair definite validation rejections in the current job (bounded to the existing
+  two-rejection limit). Uncertain outcomes retain the exact prepared payload, fenced
+  lease, backoff and receipt-replay behavior. No blind retry or permission bypass.
+
+Actual-model synthetic testing with the pinned writer passed a ten-fact communication
+paragraph: all classifications approved, both collaborator locations linked, proactive
+contact conditions retained, no invented assistant Person/planet entity. A later urgent
+channel correction preserved quiet hours and conversational style. The initial candidate
+failed the location-coverage assertion; structured target expansion was added before the
+passing run. Processing took 48.6 seconds for ten facts, 63.1 seconds including the later
+call test (41 total model requests). This is not a claim of faster overall throughput.
+The rambling multi-person variant and later-call correction also passed (27.4 and 19.1
+seconds). Both use disposable PostgreSQL/LiteGraph, never the live owner's graph.
+
+Repeated relationship tests also exposed unsupported inferred employer links and
+holiday destinations misclassified as work geography. The latter were blocked by
+semantic review but exhausted retries. Extraction/review now explicitly distinguish
+stated relationships from deductions and leisure travel from collaboration. The final
+relationship run passed all nine facts in 47.8 seconds (32 requests), including partial
+anniversary date, boss/employer direction, trip participants/month and dietary negation.
+The diet assertion checks current facts and permits an explicit separate negative fact;
+it no longer mistakes faithful literal variants or superseded history for lost negation.
+These are bounded quality checks, not proof that all extraction errors are eliminated;
+unsupported drafts can still require attention rather than being silently discarded.
+
+The final local suite passes 99 facade tests (with disposable PostgreSQL and LiteGraph
+checks enabled) and 52 unchanged voice-service tests. Protected voice/bridge paths
+have no diff. This remains a staged change, not a production-call result.
+
+Activation requires only a new **memory-facade image**, preserving all current secrets,
+graph/owner/workspace settings and other containers. Do not redeploy or edit the voice
+service for this change. Before the sanity-check call, inspect and explicitly requeue
+only the prior false assistant-identity clarification under its same capture ID/source
+and owner scope; retain other completed facts/receipts. Do not reset onboarding or
+automatically clear genuine ambiguities. Previously pending classification annotations
+remain historical; this change does not bulk-rewrite or retroactively approve them.
 
 OpenAI Docs informed the explicit tool-call/output loop and Structured Outputs
 contract: https://developers.openai.com/api/docs/guides/function-calling

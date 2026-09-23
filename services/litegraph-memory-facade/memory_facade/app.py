@@ -62,6 +62,7 @@ class Settings:
     capture_dsn: str = ""
     writer_api_key: str = ""
     writer_model: str = "gpt-4.1-mini"
+    assistant_name: str = "2"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,6 +96,7 @@ class Settings:
             capture_dsn=os.getenv('MEMORY_CAPTURE_DSN',''),
             writer_api_key=os.getenv('MEMORY_WRITER_API_KEY',''),
             writer_model=os.getenv('MEMORY_WRITER_MODEL','gpt-4.1-mini'),
+            assistant_name=os.getenv('MEMORY_ASSISTANT_NAME','2').strip() or '2',
         )
 
 
@@ -672,7 +674,7 @@ def build_app(settings: Settings) -> web.Application:
         app['capture_queue']=queue
         async def worker_context(application):
             await queue.ready()  # fail startup rather than falsely acknowledge durable capture
-            worker=CaptureWorker(queue,ResponsesModel(settings.writer_api_key,settings.writer_model),
+            worker=CaptureWorker(queue,ResponsesModel(settings.writer_api_key,settings.writer_model,settings.assistant_name),
                                  GraphMemory(settings,litegraph_request))
             task=asyncio.create_task(worker.run())
             yield

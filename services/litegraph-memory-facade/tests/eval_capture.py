@@ -36,6 +36,48 @@ RELATIONSHIPS=("Avery Sample is my partner. Our anniversary is May 4; I haven't 
     "We're going to Colombia for a holiday in November, no exact dates yet. "
     "By we I mean Avery and me. Devon is vegetarian, not vegan.")
 
+COMMUNICATION=("For real-time issues I prefer direct and succinct communication, but for projects "
+    "and personal discussions I like a casual, exploratory style. Phone and text are my primary "
+    "channels; email is the fallback when those are delayed. Urgent messages: phone first, text second. "
+    "Do not interrupt me after 10pm unless it is a major issue; otherwise wait until morning. "
+    "I am comfortable with 2 proactively contacting me by phone or text for important issues, "
+    "but only once those channels are integrated. I usually operate in Central Standard Time. "
+    "I work with people in New York and Utah, and worldwide.")
+
+
+async def check_communication(graph, status, worker, queue):
+    assert status['state']=='complete', 'Clear communication preferences need attention'
+    nodes=await graph.list_records('nodes')
+    entities=[n for n in nodes if n['Data'].get('kind')=='Entity']
+    facts=[n['Data'] for n in nodes if n['Data'].get('kind')=='Fact']
+    assert all(f['classification_status']=='approved' for f in facts), 'Ordinary preference left pending classification'
+    assert all(f['subject_name']=='Morgan Example' for f in facts), 'Preference attached to wrong person'
+    assert not any(n['Data']['canonical_name'].lower() in ('2','two','planet earth','earth') for n in entities), 'Invented assistant-person/planet entity'
+    preferences=[f for f in facts if f['predicate']=='communication_preference']
+    combined=' '.join(f['content']+' '+str(f['value']) for f in preferences).lower()
+    assert all(term in combined for term in ('succinct','exploratory','email','fallback','urgent','10','major','integrat','important')), 'Lost preference qualifiers'
+    proactive=[f for f in preferences if 'integrat' in f['content'].lower()]
+    assert proactive and any('2' in f['content'] and 'important' in f['content'].lower() for f in proactive), 'Assistant/contact conditions lost'
+    assert any(f['predicate']=='time_zone' and 'central' in str(f['value']).lower() for f in facts), 'Timezone classification lost'
+    places={n['GUID']:n['Data']['canonical_name'] for n in entities}
+    assert {places.get(f['object_ref']) for f in facts if f['predicate']=='collaborates_with_people_in'}=={'New York','Utah'}, 'Collaborator location links lost'
+    assert any(f['predicate']=='work_geography' for f in facts), 'Broad work geography lost'
+    person=next(n for n in entities if n['Data']['canonical_name']=='Morgan Example')
+    before_quiet={f['memory_ref'] for f in preferences if '10' in f['content']}
+    before_style={f['memory_ref'] for f in preferences if 'exploratory' in f['content'].lower()}
+    follow=await queue.capture(dict(content='For urgent messages, change my earlier preference: text first now, phone second. My quiet hours and casual exploratory style are unchanged.',
+        context='The caller explicitly introduced themself as Morgan Example.',source_session_ref='synthetic-preference-followup',
+        source_thread_ref='synthetic-eval-thread',idempotency_key='correct-urgency'))
+    await worker.process(await queue.claim())
+    state=(await queue.status({'capture_id':follow['capture_id']}))['captures'][0]
+    assert state['state']=='complete', 'Preference correction did not complete'
+    recalled=await GraphMemory(graph.settings,graph.request).context(person['GUID'])
+    current={n['GUID']:n['Data'] for n in recalled['facts']}
+    assert before_quiet<=set(current) and before_style<=set(current), 'Urgency correction erased unrelated communication facet'
+    corrected=[f for f in current.values() if f.get('supersedes_memory_id') and 'urgent' in f['content'].lower()]
+    assert corrected and any('text' in f['content'].lower() and 'first' in f['content'].lower() for f in corrected), 'Urgency correction missing'
+    print('PASS communication: assistant identity, conditional proactive preference (not permission), approved vocabulary, location links, independent facets and later correction.',flush=True)
+
 
 async def check_relationship_passage(graph, status):
     assert status['state']=='complete', 'Clear relationship passage did not finish'
@@ -49,6 +91,7 @@ async def check_relationship_passage(graph, status):
     assert link('Morgan Example','partner_of','Avery Sample') or link('Avery Sample','partner_of','Morgan Example'), 'Partner relationship lost'
     assert link('Morgan Example','reports_to','Devon Example') or link('Devon Example','boss_of','Morgan Example'), 'Boss relationship lost or reversed'
     assert link('Devon Example','works_at','Harbor Test Company'), 'Employer attached to wrong person'
+    assert not any(name(f['subject_ref'])=='Morgan Example' and f['predicate']=='works_at' for f in facts), 'Caller employer inferred from boss'
     anniversary=[f for f in facts if f['predicate']=='anniversary_date']
     assert len(anniversary)==1 and anniversary[0]['value'] in ('May 4','May 04','05-04','--05-04'), 'Anniversary date precision lost'
     assert not any(re.search(r'\b(?:19|20)\d{2}\b',f['content']+' '+str(f['value'] or '')) for f in facts), 'Unstated year invented'
@@ -59,8 +102,13 @@ async def check_relationship_passage(graph, status):
     assert {'Morgan Example','Avery Sample'}<=participants, 'Trip participants lost'
     assert any(f['subject_ref']==trip and f['predicate']=='event_timing' and
                'november' in str(f['value'] or '').lower() for f in facts), 'Trip month missing as a literal event attribute'
-    diet=[f for f in facts if f['predicate']=='dietary_preference' and name(f['subject_ref'])=='Devon Example']
-    assert len(diet)==1 and diet[0]['value'].lower()=='vegetarian', 'Diet negation lost'
+    superseded={f.get('supersedes_memory_id') for f in facts}
+    diet=[f for f in facts if f['predicate']=='dietary_preference' and name(f['subject_ref'])=='Devon Example'
+          and f['memory_ref'] not in superseded]
+    diet_values=[str(f['value']).strip().lower() for f in diet]
+    positive={'vegetarian','vegetarian (not vegan)','vegetarian, not vegan'}
+    assert sum(v in positive for v in diet_values)==1 and set(diet_values)<=positive|{'not vegan'}, 'Diet changed or duplicated'
+    assert any('not vegan' in f['content'].lower() for f in diet), 'Diet negation lost'
     assert all(e['family'] not in ('task','decision','interaction') for e in entities.values()), 'Memory claimed operational execution'
     assert not any(re.search(r'\b(booked|confirmed booking)\b',f['content'],re.I) for f in facts), 'Trip intention became a booking'
     fresh=GraphMemory(graph.settings,graph.request)
@@ -98,7 +146,9 @@ async def main():
     passage=TEXT if variant=='original' else VARIANT
     person='Jenna Example' if variant=='original' else 'Tessa Sample'
     relationships=os.getenv('CAPTURE_EVAL_RELATIONSHIPS')=='1'
+    communication=os.getenv('CAPTURE_EVAL_COMMUNICATION')=='1'
     if relationships: passage=RELATIONSHIPS; person='Avery Sample'
+    if communication: passage=COMMUNICATION; person='Morgan Example'
     particulars=('vegan','northstar','denver','hiking') if variant=='original' else ('gluten','meadow','boston','swimming')
     club='robotics' if variant=='original' else 'pottery'
     stale='austin' if variant=='original' else 'portland'
@@ -148,6 +198,10 @@ async def main():
     print(json.dumps({'model':model.resolved_model,'calls':model.calls,'input_tokens':model.input_tokens,
         'output_tokens':model.output_tokens,'processing_seconds':round(time.monotonic()-started,1)}),flush=True)
     if os.getenv('CAPTURE_EVAL_TRACE')=='1': print(json.dumps({'synthetic_trace':model.trace}),flush=True)
+    if communication:
+        await check_communication(graph,statuses['captures'][0],worker,q)
+        print(json.dumps({'total_calls_including_followup':model.calls,'total_seconds':round(time.monotonic()-started,1)}),flush=True)
+        return
     if relationships:
         await check_relationship_passage(graph,statuses['captures'][0])
         return
