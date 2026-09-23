@@ -406,6 +406,10 @@ class GraphMemory:
             d = data(node)
             haystack = " ".join(str(d.get(k) or "") for k in ("canonical_name", "content", "predicate", "value", "subject_name", "observed_subject_name"))
             score = len(query_terms & terms(haystack))
+            # A character sheet with many facts must not crowd its own Entity
+            # out of a name lookup. Still a candidate, never identity proof.
+            if d.get('kind')=='Entity' and query.strip().casefold()==d['canonical_name'].casefold():
+                score += 100
             if node["GUID"] in matched_entities or d.get("subject_ref") in matched_entities:
                 score += 10
             names = terms(d.get("canonical_name", "") + " " + d.get("subject_name", ""))
@@ -416,4 +420,6 @@ class GraphMemory:
                 ranked.append((score, {**node, "match_kind": "phonetic_candidate" if phonetic else "keyword_or_resolved_alias"}))
         ranked.sort(key=lambda pair: (-pair[0], pair[1]["GUID"]))
         return {"query": query, "matches": [{"memory_id": n["GUID"], "kind": data(n)["kind"], "content": data(n), "match_kind": n["match_kind"]} for _, n in ranked[:limit]],
-                "has_more_matches": len(ranked) > limit, "retrieval": "bounded_keyword_candidates", "requires_identity_resolution": True}
+                "has_more_matches": len(ranked) > limit,
+                "has_more_entity_matches": any(data(n).get('kind')=='Entity' for _,n in ranked[limit:]),
+                "retrieval": "bounded_keyword_candidates", "requires_identity_resolution": True}

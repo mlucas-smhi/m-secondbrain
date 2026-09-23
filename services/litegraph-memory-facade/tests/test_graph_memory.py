@@ -130,6 +130,17 @@ class GraphMemoryTests(unittest.IsolatedAsyncioTestCase):
         second = await self.graph.store(other)
         self.assertNotEqual(first["entities"]["andrew"]["id"], second["entities"]["andrew"]["id"])
 
+    async def test_exact_entity_is_not_crowded_out_by_its_character_sheet(self):
+        args=bundle()
+        args['entities']=args['entities'][:1]
+        args['facts']=[{**args['facts'][2], 'key':f'fact{i}',
+            'content':f'Andrew Example has synthetic preference {i}.'} for i in range(20)]
+        saved=await self.graph.store(args)
+        result=await self.graph.search({'query':'Andrew Example','max_results':10})
+        self.assertEqual(result['matches'][0]['memory_id'],saved['entities']['andrew']['id'])
+        self.assertTrue(result['has_more_matches'])
+        self.assertFalse(result['has_more_entity_matches'])
+
     async def additional(self, first, **changes):
         args = bundle()
         args.update(source_ref="utterance-2", idempotency_key="capture-2")

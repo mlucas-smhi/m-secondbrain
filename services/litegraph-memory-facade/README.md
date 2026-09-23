@@ -7,7 +7,7 @@ graph, and calls the private LiteGraph REST service with bounded timeouts.
 An opt-in **conversational capture** path is implemented but not deployed. It
 replaces public graph writes with a durable PostgreSQL inbox and a background
 fact writer. See [CONVERSATIONAL_CAPTURE.md](CONVERSATIONAL_CAPTURE.md) for
-semantics, configuration, tests, limitations and the blocked rollout gate.
+semantics, configuration, tests, limitations and the remaining rollout gates.
 
 ## Entity graph mode — implemented locally, opt-in
 

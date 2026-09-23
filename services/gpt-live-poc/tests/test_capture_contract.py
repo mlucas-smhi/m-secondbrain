@@ -37,3 +37,6 @@ class CaptureContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('durable capture only, not graph persistence',response)
         self.assertIn('Do not poll after every capture',response)
         self.assertIn('You own the agenda',response)
+        self.assertIn('including passages from earlier calls',response)
+        self.assertIn('not finalized graph facts',response)
+        self.assertIn('without claiming the graph update is finished',response)

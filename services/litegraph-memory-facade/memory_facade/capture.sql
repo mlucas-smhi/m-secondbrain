@@ -24,4 +24,7 @@ CREATE TABLE IF NOT EXISTS litegraph_two_poc.memory_captures (
 CREATE INDEX IF NOT EXISTS memory_captures_pending
  ON litegraph_two_poc.memory_captures(workspace_id,owner_ref,created_at)
  WHERE state IN ('pending','processing');
+CREATE INDEX IF NOT EXISTS memory_captures_recall
+ ON litegraph_two_poc.memory_captures(workspace_id,owner_ref,created_at DESC,id DESC)
+ WHERE state<>'complete';
 REVOKE ALL ON litegraph_two_poc.memory_captures FROM PUBLIC;

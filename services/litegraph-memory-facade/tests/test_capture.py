@@ -1,14 +1,16 @@
 import asyncio
 import copy
+import json
 import os
 from pathlib import Path
 import unittest
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+from dataclasses import replace
 
 import psycopg
 
-from memory_facade.app import Settings, tool_catalog
+from memory_facade.app import Settings, tool_catalog, mcp
 from memory_facade.capture import CaptureQueue, LeaseLost, public_status
 from memory_facade.capture_worker import CaptureWorker, extraction_plan
 from memory_facade.graph_memory import GraphMemory
@@ -32,6 +34,16 @@ def prepared(name='Example A'):
 
 
 class ContractTests(unittest.TestCase):
+    def test_capture_activation_requires_explicit_evaluated_writer_model(self):
+        env=dict(LITEGRAPH_ENDPOINT='http://test',LITEGRAPH_API_KEY='synthetic',
+            MCP_TENANT_GUID=str(uuid.UUID(int=1)),MCP_GRAPH_GUID=str(uuid.UUID(int=2)),
+            GRAPH_MEMORY_ENABLED='true',MEMORY_WORKSPACE_ID='test',MEMORY_OWNER_REF='user:test',
+            MEMORY_CAPTURE_ENABLED='true',MEMORY_CAPTURE_DSN='synthetic',MEMORY_WRITER_API_KEY='synthetic')
+        with patch.dict(os.environ,env,clear=True):
+            with self.assertRaisesRegex(RuntimeError,'MEMORY_WRITER_MODEL'): Settings.from_env()
+            with patch.dict(os.environ,{'MEMORY_WRITER_MODEL':'gpt-4.1-2025-04-14'}):
+                self.assertEqual(Settings.from_env().writer_model,'gpt-4.1-2025-04-14')
+
     def test_capture_replaces_external_graph_write(self):
         names=[t['name'] for t in tool_catalog(True,True)]
         self.assertNotIn('memory_store',names)
@@ -43,6 +55,12 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'invalid_capture_evidence'):
             extraction_plan([unit('Example A is a CEO.')],'Example A is vegan.')
         with self.assertRaises(ValueError): extraction_plan([], 'nonempty')
+
+    def test_retained_fact_does_not_leak_draft_clarification(self):
+        draft={**unit('Example A is vegan.'),'question':'Should I create a record?'}
+        plan=extraction_plan([draft],'Example A is vegan.')
+        self.assertEqual(plan[0]['question'],'')
+        self.assertEqual(plan[0]['state'],'pending')
 
 
 @unittest.skipUnless(DSN,'Set TEST_CAPTURE_DSN to a disposable PostgreSQL database')
@@ -82,6 +100,67 @@ class DurableCaptureTests(unittest.IsolatedAsyncioTestCase):
         for content in ('sk-'+'x'*32,'x'*24001):
             with self.assertRaises(ValueError): await self.queue.capture(arguments(content))
         self.assertEqual((await self.queue.status({}))['captures'],[])
+
+    async def test_pending_recall_survives_new_session_and_preserves_source(self):
+        passage='Example A lives in Austin. No, Denver now. There are two Johns; I have not said which John hikes.'
+        receipt=await self.queue.capture(arguments(passage))
+        reopened=CaptureQueue(DSN,self.workspace,'user:example')
+        result=await reopened.search_pending({'query':'Denver'})
+        match=result['matches'][0]
+        self.assertEqual(match['capture_id'],receipt['capture_id'])
+        self.assertEqual(match['content'],passage)
+        self.assertFalse(match['graph_save_complete'])
+        self.assertTrue(match['extraction_pending'])
+        self.assertEqual(match['kind'],'PendingCapture')
+        self.assertEqual(match['source_session_ref'],'test-session')
+        self.assertEqual(match['source_thread_ref'],'test-thread')
+        self.assertIn('not_finalized',match['authority'])
+        self.assertEqual((await reopened.search_pending({'query':'unrelated'}))['matches'],[])
+        for workspace,owner in ((self.workspace,'user:other'),('other-workspace','user:example')):
+            self.assertEqual((await CaptureQueue(DSN,workspace,owner).search_pending({'query':'Denver'}))['matches'],[])
+
+    async def test_pending_recall_excludes_complete_but_keeps_partial_and_failed(self):
+        for index,state in enumerate(('pending','processing','complete','partial','needs_attention')):
+            receipt=await self.queue.capture({**arguments(), 'idempotency_key':str(index)})
+            async with self.queue.connection() as c:
+                await c.execute('UPDATE litegraph_two_poc.memory_captures SET state=%s WHERE id=%s',
+                    (state,receipt['capture_id']))
+        results=await self.queue.search_pending({'query':'Example'})
+        self.assertEqual({r['state'] for r in results['matches']},{'pending','processing','partial','needs_attention'})
+        self.assertFalse(results['has_more_matches'])
+        limited=await self.queue.search_pending({'query':'Example','max_results':2})
+        self.assertEqual(len(limited['matches']),2)
+        self.assertTrue(limited['has_more_matches'])
+        self.assertEqual((await self.queue.search_pending({'query':'_%'}))['matches'],[])
+        for args in ({'query':'Example','owner_ref':'user:other'}, {'query':'Example','max_results':True}):
+            with self.assertRaises(ValueError): await self.queue.search_pending(args)
+
+    async def test_pending_recall_bounds_output_without_cutting_corrections(self):
+        passage='Example '+('context '*2500)+' actually not vegan.'
+        for index in range(2):
+            await self.queue.capture({**arguments(passage),'idempotency_key':str(index)})
+        result=await self.queue.search_pending({'query':'vegan'})
+        self.assertEqual(len(result['matches']),1)
+        self.assertEqual(result['matches'][0]['content'],passage)
+        self.assertTrue(result['has_more_matches'])
+
+    async def test_mcp_search_keeps_pending_source_separate_from_graph_facts(self):
+        await self.queue.capture(arguments('Example A now lives in Denver, not Austin.'))
+        graph_result={'matches':[{'memory_id':'older-fact','content':{'content':'Example A lives in Austin.'}}]}
+        app={'settings':replace(self.settings,capture_enabled=True),'capture_queue':self.queue}
+        class Request:
+            json=AsyncMock(return_value={'id':1,'method':'tools/call',
+                'params':{'name':'memory_search','arguments':{'query':'Example'}}})
+        request=Request(); request.app=app
+        with patch('memory_facade.app.search_memory',AsyncMock(return_value=graph_result)):
+            response=await mcp(request)
+        result=json.loads(response.text)['result']
+        self.assertFalse(result['isError'])
+        data=result['structuredContent']
+        self.assertEqual(data['matches'],graph_result['matches'])
+        self.assertIn('not Austin',data['pending_captures']['matches'][0]['content'])
+        self.assertFalse(data['pending_captures']['matches'][0]['graph_save_complete'])
+        self.assertNotIn('pending_captures',graph_result)  # do not mutate graph result
 
     async def test_only_one_worker_claims_and_expired_worker_is_fenced(self):
         await self.queue.capture(arguments())
