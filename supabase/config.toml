@@ -19,6 +19,9 @@ verify_jwt = false
 [functions.verify-onboarding-code]
 verify_jwt = false
 
+[functions.resolve-onboarding-caller]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

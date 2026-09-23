@@ -72,6 +72,17 @@ class SettingsTests(unittest.TestCase):
         )
         self.assertTrue(configured.onboarding_enabled)
 
+    def test_returning_onboarding_requires_resolution_endpoint(self) -> None:
+        configured = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            allowed_caller_number="+15550000001",
+            onboarding_resume_url="https://example.supabase.co/resolve",
+            onboarding_api_key="onboarding-key",
+        )
+        self.assertTrue(configured.returning_onboarding_enabled)
+
 
 class MemoryBoundaryTests(unittest.TestCase):
     def test_allows_canonical_markdown_paths(self) -> None:
@@ -207,6 +218,41 @@ class SessionPayloadTests(unittest.TestCase):
         self.assertEqual([tool["name"] for tool in payload["tools"]], ["validate_onboarding_code"])
         self.assertNotIn("mcp", {tool["type"] for tool in payload["tools"]})
 
+    def test_returning_onboarding_restores_context_and_memory_tools(self) -> None:
+        settings = Settings(
+            "key",
+            "secret",
+            voice_api="realtime",
+            allowed_caller_number="+15550000001",
+            mcp_server_url="https://memory.example.com/mcp",
+            mcp_authorization="memory-token",
+            mcp_allowed_tools=("memory_search", "memory_get", "memory_store"),
+            onboarding_verify_url="https://example.supabase.co/verify",
+            onboarding_resume_url="https://example.supabase.co/resolve",
+            onboarding_api_key="onboarding-key",
+            onboarding_invite_id="10000000-0000-4000-8000-000000000001",
+        )
+        payload = realtime_call_payload(
+            settings,
+            {
+                "status": "recognized",
+                "actor_ref": "user:123",
+                "workspace_id": "workspace-123",
+                "thread_id": "thread-123",
+                "onboarding_session_id": "onboarding-123",
+                "onboarding_state": "in_progress",
+                "current_topic": 2,
+                "completed_topics": [1],
+                "checkpoint": {"next_question": "communication mediums"},
+                "completion_percentage": 14,
+            },
+            "call-123",
+        )
+        self.assertIn("authentication_status: returning_verified", payload["instructions"])
+        self.assertIn("current_topic: 2", payload["instructions"])
+        self.assertNotIn("validate_onboarding_code", json.dumps(payload.get("tools", [])))
+        self.assertIn("mcp", {tool["type"] for tool in payload["tools"]})
+
 
 class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
     def test_onboarding_greeting_speaks_first_and_disables_tools(self) -> None:
@@ -217,12 +263,17 @@ class SidebandToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Hello, I'm 2", event["response"]["instructions"])
         self.assertIn("exactly this once", event["response"]["instructions"])
 
+    def test_returning_onboarding_greeting_offers_resume_or_other_work(self) -> None:
+        event = onboarding_greeting_event({"status": "recognized"})
+        instructions = event["response"]["instructions"]
+        self.assertIn("Welcome back, M", instructions)
+        self.assertIn("pick up where we left off", instructions)
+        self.assertIn("something else", instructions)
+
     def test_onboarding_greeting_temporarily_disables_barge_in(self) -> None:
         protected = onboarding_turn_detection_config(interrupt_response=False)
         normal = onboarding_turn_detection_config(interrupt_response=True)
-        self.assertEqual(protected["type"], "server_vad")
-        self.assertFalse(protected["create_response"])
-        self.assertFalse(protected["interrupt_response"])
+        self.assertIsNone(protected)
         self.assertTrue(normal["create_response"])
         self.assertTrue(normal["interrupt_response"])
 

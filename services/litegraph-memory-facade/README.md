@@ -4,6 +4,11 @@ Scoped MCP facade for voice agents. It exposes `memory_search`, `memory_get`,
 and append-only `memory_store`, binds all requests to one configured tenant and
 graph, and calls the private LiteGraph REST service with bounded timeouts.
 
+An opt-in **conversational capture** path is implemented but not deployed. It
+replaces public graph writes with a durable PostgreSQL inbox and a background
+fact writer. See [CONVERSATIONAL_CAPTURE.md](CONVERSATIONAL_CAPTURE.md) for
+semantics, configuration, tests, limitations and the blocked rollout gate.
+
 ## Entity graph mode — implemented locally, opt-in
 
 `GRAPH_MEMORY_ENABLED=true` selects a different `memory_store` schema: bounded
@@ -71,9 +76,10 @@ after the authorized reset gates. No existing records are rewritten here.
    `../litegraph-poc/DURABLE_STORAGE.md`.
 2. Provision the graph's trusted metadata. Preserve or explicitly migrate old
    data; do not reinterpret old note IDs as new entity IDs.
-3. Reconcile the voice prompts with the **advertised tool schema** and inject
-   trusted source-event references. Existing prompts mention legacy fields.
-   Deploy the facade and voice changes together, then run a live synthetic call.
+3. Deploy the matching voice contract (`MEMORY_SCHEMA_MODE=entity-memory.v1`)
+   with trusted call/thread references. The local voice implementation includes
+   the graph instructions and regression tests; it is not activated by building
+   this facade. Deploy both together, then run a live synthetic call.
 4. Add durable source-event ingestion, extraction/capture jobs, retry/coverage
    accounting, and registry refinement. This change does not guarantee that
    every important spoken fact triggers a tool call or survives a dropped call.
@@ -95,7 +101,29 @@ Replace only the test LiteGraph container, keeping the separate PostgreSQL
 database, then run `tests/durability_probe.py verify NEW_ENDPOINT`. Verification
 is read-only and checks the original receipt, IDs, facts, and edges.
 
-## Legacy mode (default; existing deployment)
+## Recoverable tool failures
+
+Known tool validation failures return a successful JSON-RPC envelope containing
+`result.isError=true` and matching text/structuredContent with `status=rejected`,
+an allowlisted `error_code`, correction guidance, and a `retry_action`.
+Unknown tools and malformed protocol requests remain JSON-RPC errors. This
+follows the [MCP tool error distinction](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#error-handling).
+
+Rejections are not service outages. Scope/authority failures stop rather than
+inviting a bypass. Backend failures return `status=unavailable` and leave a save
+unconfirmed: retry the identical payload/key once to recover any committed
+receipt. Never switch keys merely to escape a timeout. After an explicit
+validation rejection, correct the supported representation with a new key.
+An idempotency conflict requires checking the prior result first.
+
+Logs contain allowlisted rejection codes or exception class names, not raw
+exceptions, tool arguments, dates, facts, or credentials. The voice prompt gives
+date/entity-link examples but does not assert which input caused a past failure.
+Tests exercise a rejected date followed by a corrected save, employment links,
+descriptive trips/reporting relationships, error redaction, and unknown tools.
+These tests do not establish that the model will correct every real-call save.
+
+## Legacy mode (default; not the graph deployment)
 
 Because the current POC uses ephemeral LiteGraph storage, the facade
 idempotently recreates its one configured tenant and graph when a replacement

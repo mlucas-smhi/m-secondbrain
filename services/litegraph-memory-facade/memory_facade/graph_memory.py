@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .errors import GraphInputError
+
 REGISTRY = json.loads(Path(__file__).with_name("entity_registry.v1.json").read_text())
 SCHEMA = "entity-memory.v1"
 KEY = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -87,18 +89,24 @@ def graph_store_schema() -> dict:
                 }}},
             "facts": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
                 "type": "object", "additionalProperties": False,
+                "oneOf": [{"required": ["value"], "not": {"required": ["object"]}},
+                          {"required": ["object"], "not": {"required": ["value"]}}],
                 "required": ["key", "subject", "predicate", "content", "evidence", "confidence"],
                 "properties": {
                     "key": {"type": "string", "pattern": KEY.pattern},
-                    "subject": {**string, "description": "Local key of the subject entity in this bundle."},
-                    "predicate": {"type": "string", "pattern": KEY.pattern},
-                    "object": {**string, "description": "Local key of an object entity. Supply object OR value."},
-                    "value": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "subject": {"type": "string", "pattern": KEY.pattern, "description": "Must equal an entities[].key in THIS bundle, e.g. person_a, never a UUID or person's name. Put a resolved UUID in that entity's existing_id instead."},
+                    "predicate": {"type": "string", "pattern": KEY.pattern,
+                        "description": "Use lowercase snake_case. Known link predicates: " + "; ".join(
+                            k + " -> " + ("string value" if v.get("literal") else ", ".join(v["object_families"]))
+                            for k, v in REGISTRY["predicates"].items()) + ". Other sourced predicates are retained pending classification."},
+                    "object": {"type": "string", "pattern": KEY.pattern, "description": "Must equal an entities[].key in THIS bundle. For a relationship only. Supply object OR value. A relationship plus its anniversary date requires two separate facts, not both fields on one fact."},
+                    "value": {"type": "string", "minLength": 1, "maxLength": 1000,
+                        "description": "Literal fact, including anniversary/birthday/trip dates as stated. Supply value OR object; omit the other field, never null. Do not invent missing year/timezone."},
                     "content": {"type": "string", "minLength": 1, "maxLength": 2000},
                     "evidence": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Supporting source excerpt, not speculation. This field is agent-reported, not independent proof."},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "valid_from": {"type": "string", "format": "date-time"},
-                    "valid_until": {"type": "string", "format": "date-time"},
+                    "valid_from": {"type": "string", "format": "date-time", "description": "Optional assertion-validity start with timezone. NOT the date of a birthday, anniversary, or trip; use a literal fact for that. Omit when unknown."},
+                    "valid_until": {"type": "string", "format": "date-time", "description": "Optional assertion-validity end with timezone, after valid_from. Omit when unknown; never null."},
                     "supersedes_memory_id": {"type": "string", "format": "uuid"}
                 }}}
         }
@@ -215,7 +223,7 @@ class GraphMemory:
             entities[key] = {"id": record_id, "family": family, "name": name, "observed_name": observed}
 
         keys, referenced, superseded = set(), set(), set()
-        for fact in args["facts"]:
+        for fact_index, fact in enumerate(args["facts"]):
             fields(fact, {"key", "subject", "predicate", "object", "value", "content", "evidence", "confidence", "valid_from", "valid_until", "supersedes_memory_id"},
                    {"key", "subject", "predicate", "content", "evidence", "confidence"})
             key = text(fact["key"], "fact_key", 64)
@@ -223,8 +231,12 @@ class GraphMemory:
                 raise ValueError("invalid_or_duplicate_fact_key")
             keys.add(key)
             subject_key = text(fact["subject"], "subject_key", 64)
-            if subject_key not in entities or ("object" in fact) == ("value" in fact):
-                raise ValueError("invalid_fact_endpoints")
+            if subject_key not in entities:
+                raise GraphInputError("unknown_fact_subject", fact_index, "subject")
+            if "object" in fact and "value" in fact:
+                raise GraphInputError("fact_target_conflict", fact_index, "target")
+            if "object" not in fact and "value" not in fact:
+                raise GraphInputError("fact_target_missing", fact_index, "target")
             subject = entities[subject_key]["id"]
             referenced.add(subject_key)
             predicate = text(fact["predicate"], "predicate", 64)
@@ -239,7 +251,7 @@ class GraphMemory:
             if "object" in fact:
                 object_key = text(fact["object"], "object_key", 64)
                 if object_key not in entities:
-                    raise ValueError("unknown_fact_object")
+                    raise GraphInputError("unknown_fact_object", fact_index, "object")
                 obj = entities[object_key]
                 if definition and (definition.get("literal") or obj["family"] not in definition["object_families"]):
                     raise ValueError("predicate_object_family_mismatch")

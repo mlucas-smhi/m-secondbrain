@@ -298,6 +298,14 @@ class GraphMemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("subject", graph["properties"])
         self.assertEqual(graph["properties"]["facts"]["maxItems"], 20)
         self.assertNotIn("workspace_id", graph["properties"])
+        fact = graph["properties"]["facts"]["items"]
+        self.assertEqual(fact["oneOf"], [
+            {"required": ["value"], "not": {"required": ["object"]}},
+            {"required": ["object"], "not": {"required": ["value"]}},
+        ])
+        for endpoint in ("subject", "object"):
+            self.assertIn("entities[].key", fact["properties"][endpoint]["description"])
+            self.assertEqual(fact["properties"][endpoint]["pattern"], "^[a-z][a-z0-9_]{0,63}$")
 
 
 if __name__ == "__main__":

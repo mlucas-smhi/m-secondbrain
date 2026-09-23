@@ -38,10 +38,10 @@ support read-only deployments now and authorized memory capture later.
 
 ## First-run onboarding gate
 
-Set `ONBOARDING_VERIFY_URL`, `ONBOARDING_API_KEY`, and `ONBOARDING_INVITE_ID`
-to put the Realtime canary into first-run onboarding mode. The caller's exact
-allowlisted E.164 number is supplied by the trusted bridge; the model supplies
-only the six-digit code it heard.
+Set `ONBOARDING_VERIFY_URL`, `ONBOARDING_RESUME_URL`, `ONBOARDING_API_KEY`, and
+`ONBOARDING_INVITE_ID` to put the Realtime canary into resumable onboarding
+mode. The caller's exact allowlisted E.164 number is supplied by the trusted
+bridge; the model supplies only the six-digit code it heard on first enrollment.
 
 Before confirmation, the session receives the onboarding prompt and one local
 function: `validate_onboarding_code`. LiteGraph MCP tools are withheld. After
@@ -53,9 +53,45 @@ durable thread. After confirmation the bridge removes the validation tool,
 marks the runtime context confirmed, and begins topic 1. Internal identifiers
 are never spoken.
 
-The current POC intentionally exposes no memory-write tool after confirmation.
-Do not claim onboarding answers were persisted until the workspace's LiteGraph
-namespace is active and an authorized write facade has been added.
+On later calls, the bridge sends the trusted inbound number and new call ID to
+`resolve-onboarding-caller`. A verified active actor receives the existing
+workspace, durable thread, onboarding checkpoint, and a fresh trust session.
+The invitation code remains single-use. Caller-ID continuity is suitable for
+ordinary conversation and onboarding, while sensitive actions may still
+require step-up verification.
+
+Set `ONBOARDING_WORKSPACE_ID` to the workspace associated with the intended
+enrollment. Resolution is scoped to that workspace because a phone may exist
+in multiple workspaces. Missing scope or unavailable lookup withholds tools
+and does not fall back to requesting another enrollment code.
+
+The opening disables automatic VAD responses and interruptions in the call
+acceptance payload. Its response carries an opening metadata tag; only the
+matching SIP `output_audio_buffer.stopped` event restores normal turn handling.
+Generation completion alone does not mean the greeting has finished playing.
+Empty checkpoints mean the stopping point is unknown; the agent must ask
+where to continue rather than claim saved topic progress.
+
+Memory tools remain withheld until trusted verification or returning-caller
+resolution succeeds. A scoped facade may then expose `memory_store`; only its
+successful result establishes that onboarding details were persisted.
+
+### Entity-graph memory deployment
+
+`MEMORY_SCHEMA_MODE=legacy` preserves the existing atomic-note save contract.
+Set `MEMORY_SCHEMA_MODE=entity-memory.v1` only alongside the graph-mode facade
+(`GRAPH_MEMORY_ENABLED=true`) and its explicitly provisioned workspace/owner
+graph. The voice service loads `two-graph-memory-prompt.md`, supplies trusted
+call/thread references, and instructs 2 to save bounded entity/fact bundles,
+reuse resolved Entity IDs, and confirm saves from returned receipts.
+
+Graph-mode MCP tools require a recognized context with actor, workspace,
+thread, and call references; missing context withholds the catalog. Verification
+failures do not fall back to personal memory access. Existing invitation,
+returning-caller, greeting, model, and voice behavior is otherwise unchanged.
+This prompt does not provide a durable background capture queue or guarantee
+that every important statement causes a save. Verify actual records in the
+two-call acceptance test before claiming reliable autonomous capture.
 
 ## POC stages
 
@@ -134,3 +170,53 @@ number. All other callers receive `<Reject>` and never see the SIP target.
 ```bash
 python -m unittest discover -s tests -v
 ```
+# Opening recovery (2026-09-22)
+
+The explicit greeting runs with `turn_detection: null`, then restores normal
+VAD after its matching playback-stop/clear event. A failed/cancelled greeting
+also releases the guard. An eight-second deadline prevents a missing event
+from leaving automatic responses disabled indefinitely. Recovery never sends
+another greeting and never unlocks memory or bypasses code validation.
+
+The opening is briefly non-interruptible. Startup input is cleared before
+normal listening resumes; a caller speaking over that short introduction may
+need to repeat their answer. Boundary/status logs deliberately omit audio,
+transcripts, codes, and tool arguments. This recovery addresses a controller
+deadlock; it does not prove the cause of an upstream audio cutoff.
+
+Reference: [OpenAI Realtime conversation controls](https://developers.openai.com/api/docs/guides/realtime-conversations).
+
+## Memory-save recovery (2026-09-22)
+
+The graph prompt distinguishes rejected inputs from uncertain backend results,
+permits one corrective retry, and forbids invented facts, authorization bypass,
+or unconfirmed save claims. Anniversary/trip dates use literal facts rather than
+assertion-validity timestamps. Descriptive trips remain separate from bookings.
+
+Unsupported local functions now receive `tool_not_allowed`, not an onboarding
+verification failure. They are never dispatched to the database/MCP implicitly
+and cannot change authentication. Only `validate_onboarding_code` uses that
+verification handler; remote MCP execution remains provider-owned, as described
+in [OpenAI Docs: Realtime tools](https://developers.openai.com/api/docs/guides/realtime-mcp).
+Rejected local calls log a bounded error code without arguments. Existing MCP
+follow-up bounds and opening-recovery behavior are unchanged.
+
+Post-tool responses retain the full active session instructions before adding
+their one-response direction. Previously that short direction replaced the
+onboarding agenda, voice/personality, trusted context, and memory contract for
+the response. This follows the documented
+[response.create override semantics](https://developers.openai.com/api/reference/resources/realtime/client-events).
+The controller updates its active instruction snapshot after successful code
+verification, so first-time and returning calls receive the same protection.
+The seven-topic sequence is unchanged; 2 leads it instead of requesting an
+agenda after each save. Missing durable checkpoints are not fabricated: the
+POC still needs an authorized checkpoint-writing tool for reliable cross-call
+topic completion. In-call conversational progress is distinct from that work.
+# Staged conversational capture
+
+`MEMORY_SCHEMA_MODE=conversational-capture.v1` selects the natural-language inbox
+contract instead of requiring the voice model to build graph payloads. Do not
+enable it independently of the matching memory facade/worker. The current live
+POC has not been switched. See
+[`../litegraph-memory-facade/CONVERSATIONAL_CAPTURE.md`](../litegraph-memory-facade/CONVERSATIONAL_CAPTURE.md)
+for the rollout gate and API-billing blocker. Voice/accent settings are unchanged.

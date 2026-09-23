@@ -1,0 +1,149 @@
+import asyncio
+import copy
+import os
+from pathlib import Path
+import unittest
+import uuid
+from unittest.mock import AsyncMock
+
+import psycopg
+
+from memory_facade.app import Settings, tool_catalog
+from memory_facade.capture import CaptureQueue, LeaseLost, public_status
+from memory_facade.capture_worker import CaptureWorker, extraction_plan
+from memory_facade.graph_memory import GraphMemory
+from test_graph_memory import FakeGraph
+
+DSN=os.getenv('TEST_CAPTURE_DSN','')
+
+
+def arguments(content='Example A is vegan. Example B likes hiking.'):
+    return dict(content=content,context='',source_session_ref='test-session',source_thread_ref='test-thread',idempotency_key='capture-1')
+
+
+def unit(statement):
+    return dict(statement=statement,evidence=statement,disposition='retain',question='')
+
+
+def prepared(name='Example A'):
+    return {'entities':[{'key':'person','family':'person','name':name}],
+            'facts':[dict(key='diet',subject='person',predicate='dietary_preference',value='vegan',
+                          content=name+' is vegan.',evidence=name+' is vegan.',confidence=1)]}
+
+
+class ContractTests(unittest.TestCase):
+    def test_capture_replaces_external_graph_write(self):
+        names=[t['name'] for t in tool_catalog(True,True)]
+        self.assertNotIn('memory_store',names)
+        self.assertEqual(names,['memory_search','memory_get','memory_capture','memory_capture_status','memory_orientation'])
+
+    def test_extraction_is_grounded_not_a_free_summary(self):
+        plan=extraction_plan([unit('Example A is vegan.')],'Example A is vegan.')
+        self.assertEqual(plan[0]['state'],'pending')
+        with self.assertRaisesRegex(ValueError,'invalid_capture_evidence'):
+            extraction_plan([unit('Example A is a CEO.')],'Example A is vegan.')
+        with self.assertRaises(ValueError): extraction_plan([], 'nonempty')
+
+
+@unittest.skipUnless(DSN,'Set TEST_CAPTURE_DSN to a disposable PostgreSQL database')
+class DurableCaptureTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        if '127.0.0.1' not in DSN and 'localhost' not in DSN:
+            raise RuntimeError('Tests require an explicitly local disposable database')
+        async with await psycopg.AsyncConnection.connect(DSN) as c:
+            await c.execute('CREATE SCHEMA IF NOT EXISTS litegraph_two_poc')
+            await c.execute(Path(__file__).parents[1].joinpath('memory_facade/capture.sql').read_text())
+        self.workspace='test-'+str(uuid.uuid4())
+        self.queue=CaptureQueue(DSN,self.workspace,'user:example')
+        self.settings=Settings('fake','fake',str(uuid.UUID(int=1)),str(uuid.UUID(int=2)),
+            graph_memory_enabled=True,workspace_id='workspace',owner_ref='user:owner')
+        self.backend=FakeGraph()
+        self.graph=GraphMemory(self.settings,self.backend)
+
+    async def expire(self,job):
+        async with self.queue.connection() as c:
+            await c.execute('UPDATE litegraph_two_poc.memory_captures SET lease_until=now()-interval \'1 second\',available_at=now() WHERE id=%s',(job['id'],))
+
+    async def test_capture_durable_idempotent_scoped_and_conflicts_rejected(self):
+        first=await self.queue.capture(arguments())
+        reopened=CaptureQueue(DSN,self.workspace,'user:example')
+        second=await reopened.capture(arguments())
+        self.assertEqual(first['capture_id'],second['capture_id'])
+        self.assertFalse(first['graph_save_complete'])
+        self.assertTrue(first['captured_durably'])
+        self.assertEqual(len((await reopened.status({}))['captures']),1)
+        wrong=CaptureQueue(DSN,self.workspace,'user:other')
+        self.assertEqual((await wrong.status({'capture_id':first['capture_id']}))['captures'],[])
+        self.assertIsNone(await wrong.claim())
+        with self.assertRaisesRegex(ValueError,'idempotency_key_reused'):
+            await reopened.capture(arguments('Changed meaning.'))
+
+    async def test_credentials_and_long_passage_limits_do_not_write(self):
+        for content in ('sk-'+'x'*32,'x'*24001):
+            with self.assertRaises(ValueError): await self.queue.capture(arguments(content))
+        self.assertEqual((await self.queue.status({}))['captures'],[])
+
+    async def test_only_one_worker_claims_and_expired_worker_is_fenced(self):
+        await self.queue.capture(arguments())
+        claims=await asyncio.gather(self.queue.claim(),self.queue.claim())
+        jobs=[j for j in claims if j]
+        self.assertEqual(len(jobs),1)
+        old=jobs[0]
+        await self.expire(old)
+        new=await self.queue.claim()
+        self.assertNotEqual(old['lease_token'],new['lease_token'])
+        with self.assertRaises(LeaseLost): await self.queue.checkpoint(old,[])
+        await self.queue.checkpoint(new,[],state='complete')
+
+    async def test_malformed_one_does_not_block_good_fact_and_retry_is_bounded(self):
+        await self.queue.capture(arguments())
+        model=type('Model',(),{'extract':AsyncMock(return_value=[unit('Example A is vegan.'),unit('Example B likes hiking.')])})()
+        worker=CaptureWorker(self.queue,model,self.graph)
+        invalid=prepared('Example B'); invalid['facts'][0]['object']='person'
+        worker.resolver.prepare=AsyncMock(side_effect=[{'bundle':prepared()},{'bundle':invalid}])
+        await worker.process(await self.queue.claim())
+        status=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(status['saved_fact_count'],1)
+        self.assertEqual(status['state'],'pending')
+        async with self.queue.connection() as c:
+            await c.execute('UPDATE litegraph_two_poc.memory_captures SET available_at=now() WHERE workspace_id=%s',(self.workspace,))
+        worker.resolver.prepare=AsyncMock(return_value={'bundle':invalid})
+        await worker.process(await self.queue.claim())
+        status=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(status['state'],'partial')
+        self.assertEqual(status['saved_fact_count'],1)
+        self.assertEqual(len(status['unresolved']),1)
+
+    async def test_restart_after_graph_commit_replays_prepared_payload_without_duplicate(self):
+        await self.queue.capture(arguments('Example A is vegan.'))
+        job=await self.queue.claim()
+        plan=extraction_plan([unit('Example A is vegan.')],job['content'])
+        args={**prepared(),'source_ref':'capture:'+str(job['id']),'source_session_ref':'test-session',
+              'source_thread_ref':'test-thread','idempotency_key':'unit-0-repair-0'}
+        plan[0].update(state='prepared',prepared=args)
+        await self.queue.checkpoint(job,plan)
+        receipt=await self.graph.store(args)  # process "dies" before queue ACK
+        node_count=len(self.backend.nodes)
+        await self.expire(job)
+        restarted=CaptureWorker(self.queue,AsyncMock(),self.graph)
+        restarted.resolver.prepare=AsyncMock(side_effect=AssertionError('Do not regenerate uncertain writes'))
+        await restarted.process(await self.queue.claim())
+        result=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(result['state'],'complete')
+        self.assertEqual(result['receipts'],[receipt['receipt_id']])
+        self.assertEqual(len(self.backend.nodes),node_count)
+
+    async def test_ambiguity_is_retained_while_independent_fact_saves(self):
+        content='Example A is vegan. John runs it.'
+        await self.queue.capture(arguments(content))
+        model=AsyncMock()
+        model.extract.return_value=[unit('Example A is vegan.'),
+            dict(statement='John runs it.',evidence='John runs it.',disposition='clarify',question='Which John, and what does he run?')]
+        worker=CaptureWorker(self.queue,model,self.graph)
+        worker.resolver.prepare=AsyncMock(return_value={'bundle':prepared()})
+        await worker.process(await self.queue.claim())
+        result=(await self.queue.status({}))['captures'][0]
+        self.assertEqual(result['state'],'partial')
+        self.assertEqual(result['saved_fact_count'],1)
+        self.assertEqual(result['unresolved'][0]['state'],'needs_clarification')
+        self.assertEqual(worker.resolver.prepare.await_count,1)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -13,6 +15,9 @@ from typing import Any
 from aiohttp import ClientSession, ClientTimeout, web
 
 from .graph_memory import GraphMemory, graph_store_schema
+from .errors import backend_failure, validation_failure
+from .capture import CaptureQueue, capture_tools
+from .capture_worker import CaptureWorker, ResponsesModel
 
 
 LOG = logging.getLogger("litegraph_memory_facade")
@@ -53,6 +58,10 @@ class Settings:
     graph_memory_enabled: bool = False
     workspace_id: str = ""
     owner_ref: str = ""
+    capture_enabled: bool = False
+    capture_dsn: str = ""
+    writer_api_key: str = ""
+    writer_model: str = "gpt-4.1-mini"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -66,6 +75,10 @@ class Settings:
         graph_enabled = os.getenv("GRAPH_MEMORY_ENABLED", "false").lower() == "true"
         if graph_enabled:
             missing.extend(name for name in ("MEMORY_WORKSPACE_ID", "MEMORY_OWNER_REF") if not os.getenv(name, "").strip())
+        capture_enabled = os.getenv('MEMORY_CAPTURE_ENABLED','false').lower()=='true'
+        if capture_enabled:
+            if not graph_enabled: raise RuntimeError('Capture requires graph memory mode')
+            missing.extend(name for name in ('MEMORY_CAPTURE_DSN','MEMORY_WRITER_API_KEY') if not os.getenv(name,''))
         if missing:
             raise RuntimeError(f"missing required environment: {', '.join(missing)}")
         return cls(
@@ -78,10 +91,14 @@ class Settings:
             graph_memory_enabled=graph_enabled,
             workspace_id=os.getenv("MEMORY_WORKSPACE_ID", ""),
             owner_ref=os.getenv("MEMORY_OWNER_REF", ""),
+            capture_enabled=capture_enabled,
+            capture_dsn=os.getenv('MEMORY_CAPTURE_DSN',''),
+            writer_api_key=os.getenv('MEMORY_WRITER_API_KEY',''),
+            writer_model=os.getenv('MEMORY_WRITER_MODEL','gpt-4.1-mini'),
         )
 
 
-def tool_catalog(graph_enabled: bool = False) -> list[dict[str, Any]]:
+def tool_catalog(graph_enabled: bool = False, capture_enabled: bool = False) -> list[dict[str, Any]]:
     catalog = [
         {
             "name": "memory_search",
@@ -173,10 +190,13 @@ def tool_catalog(graph_enabled: bool = False) -> list[dict[str, Any]]:
             "Provide a predicate and either a literal value or object entity. Use the same source_ref and "
             "idempotency_key with the identical bundle on retries. Only status=saved confirms a committed save. "
             "Corrections reference supersedes_memory_id and preserve history. Operational records require "
-            "the Turn Engine and cannot be created here. Never store secrets or credentials."
+            "the Turn Engine and cannot be created here. Never store secrets or credentials. "
+            "On status=rejected, follow error_code/message to correct the arguments; this is not an outage. "
+            "On status=unavailable, retry an identical save once, preserving its key."
         )
         catalog[2]["inputSchema"] = graph_store_schema()
-    return catalog
+    # Graph writes become internal worker-only when conversational capture is on.
+    return catalog[:2] + capture_tools() if capture_enabled and graph_enabled else catalog
 
 
 def _node_id(node: dict[str, Any]) -> str:
@@ -541,12 +561,21 @@ def rpc_error(request_id: Any, code: int, message: str) -> web.Response:
     )
 
 
+def tool_failure(request_id: Any, failure: dict) -> web.Response:
+    # A valid tools/call with bad domain inputs is a tool execution error, not
+    # a broken MCP connection. Keep the same payload in text and structured form.
+    return rpc_result(request_id, {"content": [{"type": "text", "text": json.dumps(failure)}],
+                                   "structuredContent": failure, "isError": True})
+
+
 async def mcp(request: web.Request) -> web.Response:
     settings: Settings = request.app["settings"]
     try:
         payload = await request.json()
     except (json.JSONDecodeError, ValueError):
         return rpc_error(None, -32700, "parse_error")
+    if not isinstance(payload, dict):
+        return rpc_error(None, -32600, "invalid_request")
     request_id = payload.get("id")
     method = payload.get("method")
     if method == "initialize":
@@ -561,19 +590,43 @@ async def mcp(request: web.Request) -> web.Response:
     if method == "notifications/initialized":
         return web.Response(status=202)
     if method == "tools/list":
-        return rpc_result(request_id, {"tools": tool_catalog(settings.graph_memory_enabled)})
+        return rpc_result(request_id, {"tools": tool_catalog(settings.graph_memory_enabled,settings.capture_enabled)})
     if method != "tools/call":
         return rpc_error(request_id, -32601, "method_not_found")
     params = payload.get("params") or {}
+    if not isinstance(params, dict) or not isinstance(params.get("name"), str):
+        return rpc_error(request_id, -32602, "invalid_tool_request")
     name = str(params.get("name", ""))
-    arguments = params.get("arguments") or {}
+    if name not in {t['name'] for t in tool_catalog(settings.graph_memory_enabled,settings.capture_enabled)}:
+        return rpc_error(request_id, -32601, "tool_not_found")
+    arguments = params.get("arguments", {})
     try:
+        if not isinstance(arguments, dict):
+            raise ValueError("invalid_graph_fields")
         if name == "memory_search":
             result = await search_memory(settings, arguments)
         elif name == "memory_get":
             result = await get_memory(settings, arguments)
         elif name == "memory_store":
             result = await store_memory(settings, arguments)
+        elif name == 'memory_capture':
+            result = await request.app['capture_queue'].capture(arguments)
+        elif name == 'memory_capture_status':
+            result = await request.app['capture_queue'].status(arguments)
+        elif name == 'memory_orientation':
+            if arguments: raise ValueError('invalid_graph_fields')
+            graph=GraphMemory(settings,litegraph_request)
+            await graph.check_scope()
+            nodes=await graph.list_records('nodes')
+            entities=[n for n in nodes if (n.get('Data') or {}).get('kind')=='Entity']
+            captures=await request.app['capture_queue'].status({})
+            result={'existing_entity_count':len(entities),'graph_is_empty':not nodes,
+                    'memory_is_empty':not nodes and not captures['scope_state_counts'],
+                    'sample_entities':[{'id':n['GUID'],'name':n['Data']['canonical_name'],
+                                        'family':n['Data']['family']} for n in entities[:12]],
+                    'pending_captures':captures,
+                    'onboarding_checkpoint':'not_supplied_by_memory',
+                    'instruction':'A missing checkpoint is not an empty memory. Use search/get for details.'}
         else:
             return rpc_error(request_id, -32601, "tool_not_found")
         text = json.dumps(result, ensure_ascii=False)
@@ -587,17 +640,20 @@ async def mcp(request: web.Request) -> web.Response:
             },
         )
     except ValueError as error:
-        return rpc_error(request_id, -32602, str(error))
+        failure = validation_failure(error)
+        LOG.warning("memory_tool_rejected tool=%s error_code=%s field_path=%s", name, failure["error_code"], failure.get("field_path", "unspecified"))
+        return tool_failure(request_id, failure)
     except Exception as error:
-        LOG.exception("memory_tool_failed tool=%s error_type=%s", name, type(error).__name__)
-        return rpc_error(request_id, -32000, "memory_backend_unavailable")
+        LOG.error("memory_tool_failed tool=%s error_type=%s", name, type(error).__name__)
+        return tool_failure(request_id, backend_failure())
 
 
 async def health(request: web.Request) -> web.Response:
     settings: Settings = request.app["settings"]
     return web.json_response(
         {"status": "ok", "memory_mode": "graph" if settings.graph_memory_enabled else "legacy",
-         "tools": [tool["name"] for tool in tool_catalog(settings.graph_memory_enabled)],
+         "tools": [tool["name"] for tool in tool_catalog(settings.graph_memory_enabled,settings.capture_enabled)],
+         "capture_enabled":settings.capture_enabled,
          "storage_durability": "not_verified_by_health_endpoint"}
     )
 
@@ -605,6 +661,18 @@ async def health(request: web.Request) -> web.Response:
 def build_app(settings: Settings) -> web.Application:
     app = web.Application(client_max_size=64 * 1024)
     app["settings"] = settings
+    if settings.capture_enabled:
+        queue=CaptureQueue(settings.capture_dsn,settings.workspace_id,settings.owner_ref)
+        app['capture_queue']=queue
+        async def worker_context(application):
+            await queue.ready()  # fail startup rather than falsely acknowledge durable capture
+            worker=CaptureWorker(queue,ResponsesModel(settings.writer_api_key,settings.writer_model),
+                                 GraphMemory(settings,litegraph_request))
+            task=asyncio.create_task(worker.run())
+            yield
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError): await task
+        app.cleanup_ctx.append(worker_context)
     app.router.add_post("/mcp", mcp)
     app.router.add_get("/health", health)
     return app

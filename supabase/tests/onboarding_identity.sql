@@ -3,13 +3,14 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path = public, extensions;
 
-SELECT plan(21);
+SELECT plan(28);
 
 SELECT has_table('public', 'application_users', 'application users table exists');
 SELECT has_table('public', 'onboarding_invites', 'onboarding invites table exists');
 SELECT has_table('public', 'trust_actor_identifiers', 'actor identifiers table exists');
 SELECT has_table('public', 'onboarding_sessions', 'onboarding sessions table exists');
 SELECT has_function('public', 'verify_and_provision_onboarding', ARRAY['uuid','text','text','text','text','text','text','text'], 'atomic onboarding function exists');
+SELECT has_function('public', 'resume_onboarding_by_verified_identifier', ARRAY['text','text','text','text','uuid'], 'returning caller resolution function exists');
 
 INSERT INTO public.onboarding_invites (
   id, code_digest, invite_type, delivery_channel, intended_identifier_type,
@@ -74,6 +75,19 @@ SELECT is(
 );
 
 SELECT is((SELECT count(*)::integer FROM public.application_users WHERE created_from_invite_id = '10000000-0000-4000-8000-000000000002'), 1, 'replay remains single-provisioned');
+
+CREATE TEMP TABLE onboarding_resume_result AS
+SELECT public.resume_onboarding_by_verified_identifier(
+  'phone', '+18323886696', 'call-test-returning', 'phone',
+  (SELECT (body->>'workspace_id')::uuid FROM onboarding_result)
+) AS body;
+
+SELECT is((SELECT body->>'status' FROM onboarding_resume_result), 'recognized', 'verified returning phone is recognized');
+SELECT is((SELECT body->>'onboarding_session_id' FROM onboarding_resume_result), (SELECT body->>'onboarding_session_id' FROM onboarding_result), 'returning call receives the existing onboarding session');
+SELECT is((SELECT body->>'thread_id' FROM onboarding_resume_result), (SELECT body->>'thread_id' FROM onboarding_result), 'returning call receives the durable onboarding thread');
+SELECT is((SELECT count(*)::integer FROM public.trust_sessions WHERE external_session_ref = 'call-test-returning' AND auth_assurance = 2), 1, 'returning verified identifier creates a bounded trust session');
+SELECT is((SELECT count(*)::integer FROM public.thread_interactions WHERE external_id = 'call-test-returning' AND content->>'interaction_type' = 'onboarding.resumed'), 1, 'returning call is recorded on the onboarding thread');
+SELECT is(public.resume_onboarding_by_verified_identifier('phone', '+15550009999', 'call-test-unknown', 'phone', (SELECT (body->>'workspace_id')::uuid FROM onboarding_result))->>'status', 'not_found', 'unknown phone is not recognized');
 
 SELECT throws_ok(
   $$INSERT INTO public.trust_actor_identifiers (
