@@ -22,6 +22,18 @@ for command_name in az jq openssl sed; do
   }
 done
 
+# This legacy bootstrap creates container-local SQLite and rotates credentials.
+# Never use it to update an app containing memories.
+if az containerapp show --name "${app_name}" --resource-group "${resource_group}" \
+  --output none 2>/dev/null; then
+  echo "Refusing legacy SQLite bootstrap on an existing app. Use the durable-storage migration runbook." >&2
+  exit 2
+fi
+if [[ "${ALLOW_EPHEMERAL_SYNTHETIC_POC:-}" != "yes" ]]; then
+  echo "This legacy bootstrap is ephemeral. Set ALLOW_EPHEMERAL_SYNTHETIC_POC=yes only for disposable synthetic-data tests." >&2
+  exit 2
+fi
+
 work_dir="$(mktemp -d)"
 cleanup() {
   rm -rf "${work_dir}"

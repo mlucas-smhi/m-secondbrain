@@ -1,0 +1,15 @@
+{
+  "Rest": {"Hostname": "*", "Port": 8701},
+  "LiteGraph": {
+    "AdminBearerToken": "synthetic-local-test-only",
+    "GraphRepositoryFilename": "/tmp/entity-test.db",
+    "Database": {"Type": "Sqlite", "Filename": "/tmp/entity-test.db", "InMemory": false},
+    "Transactions": {"MaxOperations": 120, "MaxTimeoutSeconds": 10}
+  },
+  "Encryption": {
+    "Key": "0000000000000000000000000000000000000000000000000000000000000000",
+    "Iv": "00000000000000000000000000000000"
+  },
+  "RequestHistory": {"Enable": false},
+  "Logging": {"ConsoleLogging": true, "LogQueries": false, "LogResults": false}
+}

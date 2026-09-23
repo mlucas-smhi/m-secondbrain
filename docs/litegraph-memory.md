@@ -1,5 +1,18 @@
 # LiteGraph memory architecture
 
+## 2026-09-22 design update
+
+The agreed [entity foundation](entity-foundation.md) expands the original node
+vocabulary into a 19-family starting map and replaces the fixed-edge-only
+design direction with automatically validated, extensible definitions.
+Families 15–18 are Turn Engine-owned operational references; task IDs persist
+across channels. This is a design update, not a claim of implementation.
+
+The text below records the earlier architecture. Its statement that LiteGraph
+was not provisioned describes the earlier voice-identity phase; a separate 2
+memory POC now exists. Neither the full governed projection model below nor
+the expanded entity foundation should be assumed deployed in that POC.
+
 ## Decision
 
 LiteGraph is the conversational-memory provider for 11. Supabase remains the

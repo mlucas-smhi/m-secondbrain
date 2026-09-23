@@ -1,0 +1,29 @@
+diff --git a/src/LiteGraph/GraphRepositories/Postgresql/PostgresqlGraphRepository.cs b/src/LiteGraph/GraphRepositories/Postgresql/PostgresqlGraphRepository.cs
+--- a/src/LiteGraph/GraphRepositories/Postgresql/PostgresqlGraphRepository.cs
++++ b/src/LiteGraph/GraphRepositories/Postgresql/PostgresqlGraphRepository.cs
+@@ -240,7 +240,11 @@
+         public override void InitializeRepository()
+         {
+             ThrowIfDisposed();
+-            ExecuteQuery("CREATE SCHEMA IF NOT EXISTS " + QuoteIdentifier(Schema) + ";", true);
++            DataTable existingSchema = ExecuteQuery("SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = '" + Schema.Replace("'", "''") + "';");
++            if (existingSchema.Rows.Count != 1)
++            {
++                throw new InvalidOperationException("The configured PostgreSQL schema must be provisioned by an administrator before startup.");
++            }
+             ExecuteQuery(SetupQueries.CreateTablesAndIndices(), true);
+             EnsureRequestHistoryTransactionDiagnosticsColumn();
+             EnsureUserAdminFlagColumns();
+@@ -253,7 +257,11 @@
+         {
+             ThrowIfDisposed();
+             token.ThrowIfCancellationRequested();
+-            await ExecuteQueryAsync("CREATE SCHEMA IF NOT EXISTS " + QuoteIdentifier(Schema) + ";", true, token).ConfigureAwait(false);
++            DataTable existingSchema = await ExecuteQueryAsync("SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = '" + Schema.Replace("'", "''") + "';", false, token).ConfigureAwait(false);
++            if (existingSchema.Rows.Count != 1)
++            {
++                throw new InvalidOperationException("The configured PostgreSQL schema must be provisioned by an administrator before startup.");
++            }
+             await ExecuteQueryAsync(SetupQueries.CreateTablesAndIndices(), true, token).ConfigureAwait(false);
+             await EnsureRequestHistoryTransactionDiagnosticsColumnAsync(token).ConfigureAwait(false);
+             await EnsureUserAdminFlagColumnsAsync(token).ConfigureAwait(false);

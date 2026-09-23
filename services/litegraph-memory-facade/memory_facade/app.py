@@ -12,6 +12,8 @@ from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, web
 
+from .graph_memory import GraphMemory, graph_store_schema
+
 
 LOG = logging.getLogger("litegraph_memory_facade")
 TOKEN = re.compile(r"[a-z0-9]+")
@@ -48,6 +50,9 @@ class Settings:
     graph_guid: str
     port: int = 8710
     timeout_seconds: float = 5.0
+    graph_memory_enabled: bool = False
+    workspace_id: str = ""
+    owner_ref: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,6 +63,9 @@ class Settings:
             "MCP_GRAPH_GUID": os.getenv("MCP_GRAPH_GUID", ""),
         }
         missing = [name for name, value in values.items() if not value]
+        graph_enabled = os.getenv("GRAPH_MEMORY_ENABLED", "false").lower() == "true"
+        if graph_enabled:
+            missing.extend(name for name in ("MEMORY_WORKSPACE_ID", "MEMORY_OWNER_REF") if not os.getenv(name, "").strip())
         if missing:
             raise RuntimeError(f"missing required environment: {', '.join(missing)}")
         return cls(
@@ -66,12 +74,15 @@ class Settings:
             tenant_guid=values["MCP_TENANT_GUID"],
             graph_guid=values["MCP_GRAPH_GUID"],
             port=int(os.getenv("PORT", "8710")),
-            timeout_seconds=float(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "5")),
+            timeout_seconds=float(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "20" if graph_enabled else "5")),
+            graph_memory_enabled=graph_enabled,
+            workspace_id=os.getenv("MEMORY_WORKSPACE_ID", ""),
+            owner_ref=os.getenv("MEMORY_OWNER_REF", ""),
         )
 
 
-def tool_catalog() -> list[dict[str, Any]]:
-    return [
+def tool_catalog(graph_enabled: bool = False) -> list[dict[str, Any]]:
+    catalog = [
         {
             "name": "memory_search",
             "description": "Search authorized memory by keywords and confirmed entity aliases. Name-like phonetic matches are candidates only: inspect context before treating them as the same person.",
@@ -152,6 +163,20 @@ def tool_catalog() -> list[dict[str, Any]]:
             },
         },
     ]
+    if graph_enabled:
+        catalog[0]["description"] = "Find authorized graph entities and current facts by keywords. Matches are candidates, not identity proof. Read an Entity with memory_get for its linked character sheet before saving more facts."
+        catalog[1]["description"] = "Read a graph Entity and its current linked facts/relationships, or read one Fact by memory_id. Reuse the resolved entity ID on subsequent saves."
+        catalog[2]["description"] = (
+            "Atomically save sourced facts as graph entities and relationships for the authenticated owner. "
+            "Search and resolve existing identities first; use existing_id for known entities, not new copies. "
+            "Include every important stated particular as a separate fact, not one summary. Never infer traits. "
+            "Provide a predicate and either a literal value or object entity. Use the same source_ref and "
+            "idempotency_key with the identical bundle on retries. Only status=saved confirms a committed save. "
+            "Corrections reference supersedes_memory_id and preserve history. Operational records require "
+            "the Turn Engine and cannot be created here. Never store secrets or credentials."
+        )
+        catalog[2]["inputSchema"] = graph_store_schema()
+    return catalog
 
 
 def _node_id(node: dict[str, Any]) -> str:
@@ -302,6 +327,8 @@ async def ensure_memory_scope(settings: Settings) -> None:
 
 
 async def search_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    if settings.graph_memory_enabled:
+        return await GraphMemory(settings, litegraph_request).search(arguments)
     await ensure_memory_scope(settings)
     query = str(arguments.get("query", "")).strip()
     if not query:
@@ -336,6 +363,20 @@ async def search_memory(settings: Settings, arguments: dict[str, Any]) -> dict[s
 
 
 async def get_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    if settings.graph_memory_enabled:
+        graph = GraphMemory(settings, litegraph_request)
+        await graph.check_scope()
+        record = await graph.read(arguments.get("memory_id", ""))
+        if not record:
+            raise ValueError("memory_not_found")
+        kind = node_data(record).get("kind")
+        if kind == "Entity":
+            return await graph.context(_node_id(record))
+        if kind != "Fact":
+            raise ValueError("not_a_memory_record")
+        current = graph.current_facts(await graph.list_records("nodes"), datetime.now(timezone.utc))
+        return {"memory_id": _node_id(record), "content": node_data(record),
+                "is_current": any(_node_id(n) == _node_id(record) for n in current)}
     await ensure_memory_scope(settings)
     memory_id = str(arguments.get("memory_id", "")).strip()
     if not memory_id or "/" in memory_id or ".." in memory_id:
@@ -428,6 +469,8 @@ def build_memory_node(settings: Settings, arguments: dict[str, Any]) -> dict[str
 
 
 async def store_memory(settings: Settings, arguments: dict[str, Any]) -> dict[str, Any]:
+    if settings.graph_memory_enabled:
+        return await GraphMemory(settings, litegraph_request).store(arguments)
     await ensure_memory_scope(settings)
     # Validate ordinary arguments before any additional lookup.
     node = build_memory_node(settings, arguments)
@@ -518,7 +561,7 @@ async def mcp(request: web.Request) -> web.Response:
     if method == "notifications/initialized":
         return web.Response(status=202)
     if method == "tools/list":
-        return rpc_result(request_id, {"tools": tool_catalog()})
+        return rpc_result(request_id, {"tools": tool_catalog(settings.graph_memory_enabled)})
     if method != "tools/call":
         return rpc_error(request_id, -32601, "method_not_found")
     params = payload.get("params") or {}
@@ -550,9 +593,12 @@ async def mcp(request: web.Request) -> web.Response:
         return rpc_error(request_id, -32000, "memory_backend_unavailable")
 
 
-async def health(_: web.Request) -> web.Response:
+async def health(request: web.Request) -> web.Response:
+    settings: Settings = request.app["settings"]
     return web.json_response(
-        {"status": "ok", "tools": [tool["name"] for tool in tool_catalog()]}
+        {"status": "ok", "memory_mode": "graph" if settings.graph_memory_enabled else "legacy",
+         "tools": [tool["name"] for tool in tool_catalog(settings.graph_memory_enabled)],
+         "storage_durability": "not_verified_by_health_endpoint"}
     )
 
 

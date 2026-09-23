@@ -1,0 +1,40 @@
+{
+  "version": "entity-foundation.v1",
+  "families": {
+    "person": {"label": "Person", "authority": "memory", "boundary": "An individual; CEO and partner are roles, not person subtypes."},
+    "animal": {"label": "Animal", "authority": "memory", "boundary": "An individually meaningful animal, not a species."},
+    "organization": {"label": "Organization", "authority": "memory", "boundary": "A company or formal/informal group; separate from its premises."},
+    "place": {"label": "Place", "authority": "memory", "boundary": "A geographic or physical location; not the business occupying it."},
+    "project": {"label": "Project", "authority": "memory", "boundary": "A bounded initiative; executable tasks remain Turn Engine records."},
+    "event": {"label": "Event", "authority": "memory", "boundary": "An occasion; distinguish recurring series from occurrences."},
+    "activity": {"label": "Activity", "authority": "memory", "boundary": "An activity or interest, not a scheduled occurrence."},
+    "topic": {"label": "Topic", "authority": "memory", "boundary": "A subject or field; interest does not establish expertise."},
+    "goal": {"label": "Goal", "authority": "memory", "boundary": "A desired outcome, potentially motivating several projects."},
+    "routine": {"label": "Routine", "authority": "memory", "boundary": "A repeatable pattern or workflow, not an execution instance."},
+    "asset": {"label": "Asset", "authority": "memory", "boundary": "A product or possession; distinguish model from owned instance."},
+    "service": {"label": "Service", "authority": "memory", "boundary": "An offering, separate from provider or executed transaction."},
+    "content": {"label": "Content", "authority": "memory", "boundary": "A document, book, film, or other identifiable content."},
+    "endpoint": {"label": "Endpoint", "authority": "memory", "boundary": "An account or communication address; memory never establishes verification or holds credentials."},
+    "task": {"label": "TaskReference", "authority": "turn_engine", "boundary": "Reference only; never infer operational completion from memory."},
+    "decision": {"label": "DecisionReference", "authority": "turn_engine", "boundary": "Reference only; approvals and transitions belong to the Turn Engine."},
+    "transaction": {"label": "TransactionReference", "authority": "turn_engine", "boundary": "Reference only; provider evidence determines booking/payment outcomes."},
+    "interaction": {"label": "InteractionReference", "authority": "turn_engine", "boundary": "Reference only; stable threads and discrete interactions are distinct records."},
+    "fact": {"label": "Fact", "authority": "assertion_writer", "boundary": "Created through the facts collection with evidence, subject, and time; not as a freestanding entity."}
+  },
+  "predicates": {
+    "lives_in": {"aliases": ["resides_in"], "object_families": ["place"]},
+    "works_at": {"aliases": ["employed_by"], "object_families": ["organization"]},
+    "has_role": {"aliases": [], "literal": true},
+    "interested_in": {"aliases": ["enjoys"], "object_families": ["activity", "topic", "content", "asset"]},
+    "dietary_preference": {"aliases": [], "literal": true},
+    "communication_preference": {"aliases": [], "literal": true},
+    "related_to": {"aliases": [], "object_families": ["person", "animal"]},
+    "prefers": {"aliases": [], "literal": true},
+    "context_for": {"aliases": [], "object_families": ["task", "decision", "transaction", "interaction"]}
+  },
+  "expansion": {
+    "unknown_predicate": "retain sourced assertion with classification_status=pending; do not silently add an approved definition",
+    "identity": "never merge on name or phonetics alone",
+    "authority": "new vocabulary cannot confer permissions, verification, or execution authority"
+  }
+}

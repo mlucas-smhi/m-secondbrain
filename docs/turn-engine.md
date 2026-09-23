@@ -1,5 +1,16 @@
 # Turn engine architecture
 
+## Agreed entity integration direction — 2026-09-22
+
+The [entity foundation](entity-foundation.md) assigns tasks/commitments,
+decisions, bookings/transactions, and interactions/threads to the Turn Engine.
+The memory graph holds stable references and contextual relationships, not a
+second operational state machine. Task and thread identity is channel-neutral;
+each interaction has its own ID and relevant task/thread links. Conversations
+refresh live task state before acting and project confirmed outcomes back to
+memory. This is an adopted design direction, not a statement that all four
+families or channel integrations are already implemented below.
+
 ## Purpose
 
 The turn engine gives Alfred durable, deterministic task state across calls,
