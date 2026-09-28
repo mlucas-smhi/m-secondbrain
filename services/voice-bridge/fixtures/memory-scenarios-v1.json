@@ -1,0 +1,53 @@
+{
+  "suite": "ea-memory-cookoff.v1",
+  "synthetic": true,
+  "clock": "2026-10-05T10:00:00-05:00",
+  "timezone": "America/Chicago",
+  "owner": "Casey Rowan",
+  "nodes": [
+    {"key":"owner","family":"person","name":"Casey Rowan","facts":["Casey Rowan is the fictional owner in this test workspace. Home base is Houston, Texas."],"fields":{"aliases":["Casey","owner"]}},
+    {"key":"robin","family":"person","name":"Robin Vega","facts":["Robin is Casey's partner. Robin is vegetarian: no meat, poultry, fish, or seafood."],"fields":{"aliases":["Robin"],"diet":"vegetarian"}},
+    {"key":"charlie","family":"person","name":"Charlie Rowan","facts":["Charlie is Casey's child."],"fields":{"aliases":["Charlie"]}},
+    {"key":"alex-counsel","family":"person","name":"Alex Chen","facts":["Alex Chen is outside counsel for the Northstar acquisition."],"fields":{"aliases":["Alex"],"role":"outside counsel"}},
+    {"key":"alex-guide","family":"person","name":"Alex Rivera","facts":["Alex Rivera is the guide coordinating the Pacific shark-diving option."],"fields":{"aliases":["Alex"],"role":"dive guide"}},
+    {"key":"morgan","family":"person","name":"Morgan Vale","facts":["Morgan Vale is Casey's colleague on Project Lantern."],"fields":{"aliases":["Morgan"]}},
+    {"key":"northstar","family":"project","name":"Northstar Acquisition","facts":["Northstar is a proposed acquisition. The investment committee review is a decision dependency."],"fields":{"status":"in_review"}},
+    {"key":"lantern","family":"project","name":"Project Lantern","facts":["Morgan and Casey collaborate on Project Lantern."],"fields":{"status":"active"}},
+    {"key":"review","family":"meeting","name":"Northstar investment committee review Monday 2pm","facts":["Casey must attend the Northstar investment committee review in person in Houston, Monday October 5, 2–3pm Central.","This meeting has already been rescheduled twice, from September 28 to October 1 and then October 5. These are previous dates, not additional meetings."],"fields":{"status":"confirmed","start":"2026-10-05T14:00:00-05:00","end":"2026-10-05T15:00:00-05:00","timezone":"America/Chicago","location":"Houston office","attendance":"in_person","reschedule_count":2,"previous_starts":["2026-09-28T14:00:00-05:00","2026-10-01T14:00:00-05:00"]}},
+    {"key":"flight-option","family":"booking","name":"Monday Houston to SFO flight option","facts":["Unbooked flight option for Casey: Houston departure Monday October 5 at 11am Central; San Francisco arrival 1pm Pacific. No reservation or ticket exists."],"fields":{"status":"option_only","booked":false,"departure":"2026-10-05T11:00:00-05:00","arrival":"2026-10-05T13:00:00-07:00","origin":"IAH","destination":"SFO"}},
+    {"key":"school","family":"event","name":"Charlie's school performance Friday 6:30pm","facts":["Charlie has a school performance Friday October 9 at 6:30pm Central in Houston. Casey wants to attend; arrive by 6:15pm."],"fields":{"status":"confirmed","start":"2026-10-09T18:30:00-05:00","arrival_target":"2026-10-09T18:15:00-05:00","timezone":"America/Chicago"}},
+    {"key":"return-option","family":"booking","name":"Friday Houston return flight option","facts":["Unbooked return-flight option lands at IAH Friday October 9 at 6pm Central.","Allow 30 minutes after landing to reach the car, plus 60 minutes driving from IAH to Charlie's school. These are planning estimates, not live traffic data."],"fields":{"status":"option_only","booked":false,"arrival":"2026-10-09T18:00:00-05:00","airport_exit_minutes":30,"drive_minutes":60}},
+    {"key":"dive","family":"event","name":"Pacific shark-diving excursion option","facts":["Pacific shark-diving excursion is an undecided option for Casey and Robin on October 8, 9am Pacific. A courtesy hold expires October 6 at noon Pacific. Price is $350 per person. It is not booked."],"fields":{"status":"on_hold_not_booked","start":"2026-10-08T09:00:00-07:00","hold_expires":"2026-10-06T12:00:00-07:00","price_per_person_usd":350}},
+    {"key":"dive-decision","family":"decision","name":"Decide whether to take the Pacific shark dive","facts":["Casey has not decided whether to accept the Pacific shark-diving hold. Alex Rivera is waiting for a response. The task is awaiting Casey's decision; no booking action has happened."],"fields":{"status":"awaiting_owner","due":"2026-10-06T12:00:00-07:00"}},
+    {"key":"canceled-dive","family":"event","name":"Harbor night dive canceled","facts":["Casey considered the Harbor night dive for October 7. Casey declined it on October 4; the operator acknowledged cancellation. There is no remaining hold, payment, or follow-up obligation."],"fields":{"status":"canceled","canceled_at":"2026-10-04T16:00:00-05:00","previous_status":"awaiting_owner"}},
+    {"key":"dinner","family":"event","name":"Robin's Friday tasting-menu dinner option","facts":["Dinner option with Robin on October 9 at 8:30pm Central: a fixed tasting menu containing steak, chicken, and shrimp. A vegetarian substitution has not been confirmed. This is a proposal, not a reservation."],"fields":{"status":"proposed","start":"2026-10-09T20:30:00-05:00","vegetarian_substitution":"unknown"}},
+    {"key":"asia","family":"trip","name":"Asia tour July 2027","facts":["Casey's tentative Thailand, Vietnam, and Malaysia tour is now July 2027. Casey changed it from June to July on October 4, 2026. June is superseded. Exact travel dates remain undecided and no flights are booked."],"fields":{"status":"tentative","current_month":"2027-07","previous_month":"2027-06","booked":false,"changed_at":"2026-10-04T11:00:00-05:00"}},
+    {"key":"asia-hotel","family":"booking","name":"Asia hotel quote for old June dates","facts":["An unaccepted Bangkok hotel quote covers June 10–14, 2027. It was prepared before Casey moved the tour to July. No reservation exists and the quote has not been revised."],"fields":{"status":"quote_only","start_date":"2027-06-10","end_date":"2027-06-14","booked":false}},
+    {"key":"flight-task","family":"task","name":"Move Friday return flight later — cross-channel task","facts":["Simulation only: Casey requested a later Friday return on a phone call, then texted that arrival must still permit Charlie's school performance. An email summary draft exists but has NOT been sent. Awaiting Casey's choice of a feasible flight; no ticket purchased or changed."],"fields":{"status":"awaiting_owner_decision","thread_id":"sim:thread:flight-001","turn_engine_id":"sim:te:flight-001","external_task_exists":false,"channels":["phone","sms","email_draft"],"latest_constraint":"Attend Charlie's 6:30pm performance, arriving by 6:15pm"}},
+    {"key":"calendar-cache","family":"record","name":"Casey's cached calendar coverage and freshness","facts":["Synthetic calendar snapshot last synchronized October 3 at 8am Central. It covers only the work calendar, not Casey's personal or school calendars. It is not a live free/busy service.","The snapshot lists a Monday 4pm vendor call. A newer October 4 update says that vendor call moved to Tuesday 4pm. No full refresh has occurred."],"fields":{"last_synced_at":"2026-10-03T08:00:00-05:00","coverage":["work"],"complete_calendar_coverage":false}},
+    {"key":"vendor","family":"meeting","name":"Vendor call moved from Monday to Tuesday","facts":["The vendor call moved from Monday October 5 at 4pm to Tuesday October 6 at 4pm Central, per the October 4 update. Tuesday is current; the older calendar snapshot still says Monday."],"fields":{"status":"confirmed","start":"2026-10-06T16:00:00-05:00","end":"2026-10-06T16:30:00-05:00","previous_start":"2026-10-05T16:00:00-05:00","updated_at":"2026-10-04T14:00:00-05:00"}},
+    {"key":"hotel-chat","family":"interaction","name":"Conversation about a quiet beach hotel","facts":["Synthetic phone transcript excerpt, October 2: Casey said, 'A quiet beach hotel would be nice. Maybe Cove House, maybe Sand Bay. Let's not decide yet.' Neither hotel was selected or booked."],"fields":{"thread_id":"sim:thread:hotel-002","interaction_id":"sim:interaction:hotel-002","channel":"phone","occurred_at":"2026-10-02T10:00:00-05:00","decision_made":false,"record_type":"synthetic_transcript_fixture"}},
+    {"key":"pacific-trip","family":"trip","name":"Pacific trip planning October 5–9","facts":["Casey and Robin are considering a Pacific trip during October 5–9. Total planning budget is $2,000 including both travelers' flights, lodging, dining, and activities. Flights and lodging are unbooked.","Current estimates excluding the shark dive: flights $800 total, lodging $700, dining $200. These are synthetic planning estimates, not supplier quotes."],"fields":{"status":"proposed","budget_usd":2000,"estimated_base_total_usd":1700,"traveler_count":2,"booked":false}}
+  ],
+  "edges": [
+    ["owner","partner_of","robin"], ["owner","parent_of","charlie"],
+    ["owner","works_on","northstar"], ["alex-counsel","advises","northstar"],
+    ["owner","works_on","lantern"], ["morgan","works_on","lantern"],
+    ["owner","attends","review"], ["review","concerns","northstar"],
+    ["owner","considering","flight-option"], ["flight-option","option_for","pacific-trip"],
+    ["owner","attends","school"], ["charlie","performs_at","school"],
+    ["owner","considering","return-option"], ["return-option","option_for","pacific-trip"],
+    ["dive","option_for","pacific-trip"], ["alex-guide","coordinates","dive"],
+    ["dive-decision","decides","dive"], ["owner","owns","dive-decision"],
+    ["owner","declined","canceled-dive"], ["robin","invited_to","dinner"],
+    ["owner","considering","dinner"], ["owner","planning","asia"],
+    ["asia-hotel","quote_for","asia"], ["owner","owns","flight-task"],
+    ["flight-task","concerns","return-option"], ["flight-task","must_accommodate","school"],
+    ["calendar-cache","about","owner"], ["owner","attends","vendor"],
+    ["hotel-chat","involves","owner"], ["owner","planning","pacific-trip"],
+    ["robin","traveler_on","pacific-trip"]
+  ],
+  "foreign_nodes": [
+    {"key":"foreign-alex","family":"person","name":"Alex Chen","facts":["In this OTHER synthetic workspace only, Alex Chen's private project is named Cobalt Lantern 739."],"fields":{"aliases":["Alex"],"isolation_canary":true}}
+  ]
+}
