@@ -5,7 +5,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fixture_episodes import FIXTURE, GROUP, build
+from fixture_episodes import FIXTURE, GROUP, FAMILY_TYPES, build
+from extraction import extraction_instructions
 
 
 class FixtureTests(unittest.TestCase):
@@ -18,6 +19,8 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(len(result["episodes"]), len(self.fixture["nodes"]))
         self.assertEqual(len({e["name"] for e in result["episodes"]}), len(result["episodes"]))
         self.assertTrue(all("uuid" not in e for e in result["episodes"]))
+        self.assertTrue(all(e["custom_extraction_instructions"] == extraction_instructions()
+                            for e in result["episodes"]))
 
     def test_primary_facts_and_links_preserved(self):
         result = build(self.fixture)
@@ -25,10 +28,22 @@ class FixtureTests(unittest.TestCase):
             content = json.loads(episode["episode_body"])
             self.assertEqual(content["facts"], node["facts"])
             self.assertEqual(content["fields"], node.get("fields", {}))
+            self.assertEqual(content["entity_type"], FAMILY_TYPES[node["family"]])
             self.assertEqual(episode["reference_time"], self.fixture["clock"])
             self.assertEqual(episode["group_id"], GROUP)
         self.assertEqual(sum(len(json.loads(e["episode_body"])["relationships"])
                              for e in result["episodes"]), len(self.fixture["edges"]))
+
+    def test_endpoint_hints_and_fresh_scope_do_not_change_facts(self):
+        manifest = build(self.fixture, group_id="isolated_repeat")
+        self.assertEqual(manifest["group_id"], "isolated_repeat")
+        nodes = {n["name"]: n for n in self.fixture["nodes"]}
+        for episode in manifest["episodes"]:
+            self.assertEqual(episode["group_id"], "isolated_repeat")
+            for link in json.loads(episode["episode_body"])["relationships"]:
+                for endpoint in ("source", "target"):
+                    self.assertEqual(link[endpoint + "_type"],
+                                     FAMILY_TYPES[nodes[link[endpoint]]["family"]])
 
     def test_no_answers_or_foreign_data(self):
         self.fixture["expected_answers"] = ["SECRET_ANSWER"]

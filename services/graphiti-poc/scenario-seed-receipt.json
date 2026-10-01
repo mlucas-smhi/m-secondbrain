@@ -1,0 +1,116 @@
+{
+  "status": "source_complete_extraction_partial",
+  "group_id": "ea_memory_cookoff_v1",
+  "fixture_sha256": "025a69e28603aaa4c90bf41c3e83811a7a9ea0dc8ff2fd30623fbbb3ba633c3d",
+  "guidance_sha256": "ad10f927516da43c8df726e305694304cc2eca5da21c79c706a958eb9240b968",
+  "clock": "2026-10-05T10:00:00-05:00",
+  "started_at": "2026-10-01T18:12:14.223671+00:00",
+  "observed_complete_at": "2026-10-01T18:16:37.260835+00:00",
+  "observation_seconds": 263.04,
+  "nodes": 34,
+  "edges": 55,
+  "recall_seconds": [
+    0.686,
+    0.698,
+    0.51,
+    0.585,
+    0.702,
+    0.533,
+    0.588,
+    0.382
+  ],
+  "episodes": [
+    {
+      "name": "ea-memory-cookoff.v1:pacific-trip:c3bb78baaa1e3192",
+      "uuid": "eeac9630-57d8-45aa-8884-953e983fd1ec"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:hotel-chat:04d814a60e50b79b",
+      "uuid": "5e8b2165-8e45-46ab-ae2b-c8e10cdf33b3"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:vendor:f3a2836a42e906e3",
+      "uuid": "721ba5e3-945f-40b9-88b7-f7b7ba51173c"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:calendar-cache:7aedc1ab6920932e",
+      "uuid": "4d4be30b-2a0a-4d1b-a3cf-3fdf82e3ba73"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:flight-task:2034e144e229fc2f",
+      "uuid": "5bfbe8f5-3b90-4608-91e1-854e27e3daf8"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:asia-hotel:22d759cfbf7f57d5",
+      "uuid": "b95c90db-2bc5-4831-a687-655993205761"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:asia:001fc3ac1810b9c7",
+      "uuid": "d4184986-ddae-4f23-b686-9b94b0e98ee1"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:dinner:6dcdb74c4881cfea",
+      "uuid": "7de9446a-ece1-4f85-b442-2efd944429bb"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:canceled-dive:644f26c810487667",
+      "uuid": "dd549315-12e9-482d-bd71-4146358af074"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:dive-decision:6f29db0e1ed2c9d4",
+      "uuid": "7a54dc3b-f98f-4397-96ed-78da9c4bda92"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:dive:ace7f4b2fbffd96b",
+      "uuid": "1237c059-2df3-408c-8095-ce91e6fdc72f"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:return-option:cc0edaf5473afdd3",
+      "uuid": "6f5abe8c-a38d-4188-baed-72b7c18e2f39"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:school:4d5b041bf8120862",
+      "uuid": "3ed42df2-edfc-4e31-b5fc-1f7bedf36f52"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:flight-option:be5321b8ead74b75",
+      "uuid": "92be052d-fbb1-4615-bcd8-a55bf0307fc6"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:review:2ed4122d1df26434",
+      "uuid": "b5319cca-3a95-45dc-8775-c1c103375d75"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:lantern:359e64456a5a96e6",
+      "uuid": "406c837e-c7ae-40b0-9bcb-c988ce03643e"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:northstar:a6b95d816949c198",
+      "uuid": "c24e3f1a-9fee-4af2-a502-a904b937b40c"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:morgan:7bc53c62e87d3d88",
+      "uuid": "3477df93-59ec-4dd6-9785-4cd34007e87e"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:alex-guide:26004f15f19712aa",
+      "uuid": "460be6eb-c604-4f71-be2f-ae3fed3275b8"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:alex-counsel:ab6e63d2b1ce6659",
+      "uuid": "37c361bf-e44b-47ec-a850-754bbd2261dc"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:charlie:393d1da167b92260",
+      "uuid": "3e73c24a-24bf-4d20-9dcc-35219ebcbb0b"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:robin:686646a4dd256614",
+      "uuid": "dd735fd6-90d6-4b57-ab17-e5864c8da75a"
+    },
+    {
+      "name": "ea-memory-cookoff.v1:owner:f0069272bcd3b5ff",
+      "uuid": "15f61146-33e7-40e1-81f9-48c27a855bdd"
+    }
+  ]
+}

@@ -1,11 +1,13 @@
 # Executive-assistant entity and relationship definitions
 
-Status: **deployed to the isolated Azure Graphiti app** from commit `2a68f8c` on
-2026-10-01. The native runtime loaded all 21 entity and 31 relationship models.
-See [rollout evidence](ONTOLOGY-ROLLOUT-2026-10-01.md) for live extraction checks and
-remaining gates. No ElevenLabs agent has been connected or switched.
+Status: **v1.1 deployed to the isolated Azure Graphiti app** on 2026-10-01.
+The native runtime loads 21 entity and 31 relationship models. The initial v1
+deployment used commit `2a68f8c`; v1.1 changes are awaiting commit. See
+[initial evidence](ONTOLOGY-ROLLOUT-2026-10-01.md) and the
+[v1.1 extraction repair](SCENARIO-EXTRACTION-FIX-2026-10-01.md). No ElevenLabs
+agent has been connected or switched.
 
-`ontology.json` is the source of truth for `ea-graphiti.v1`. It maps every family
+`ontology.json` is the source of truth for `ea-graphiti.v1.1`. It maps every family
 and predicate in LiteGraph's `entity-foundation.v1.1`; it does not migrate data.
 
 ## Representation
@@ -52,6 +54,20 @@ person -> employer, parent -> child, person -> hiking, person -> vegetarian.
 Use attributes for details: employment role, relationship anniversary, explicit
 time zone, event arrival target, reported state and supplied external references.
 Not every number, adjective, street string or passing remark becomes a node.
+
+Version 1.1 adds explicit fields for event constraints/prices/holds, trip cost
+estimates, transaction departure/arrival/logistics, task communication state,
+and source-snapshot coverage/freshness. These facts cannot rely on summaries:
+the pinned core may append only edge facts to a short summary rather than
+summarize the full episode. Attribute extraction sees the episode but needs a
+declared field. No summary/core patch or generic whole-transcript field was added.
+
+The synthetic fixture converter supplies native type hints for primary entities
+and relationship endpoints. `meeting` maps to Event, `booking` to
+TransactionReference, `record` to Content, and `interaction` to
+InteractionReference. The original family, facts, fields and relationships are
+retained. A task to change a reservation must not resolve to that reservation or
+the overall trip; supplied task/thread IDs remain on their own reference.
 
 Important preferences get explicit concepts and edges, while other attributes
 may still be in node properties. Retrieval must use both native node search and

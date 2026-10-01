@@ -37,6 +37,18 @@ class OntologyTests(unittest.TestCase):
         self.assertEqual(set(selected["edge_types"]),
                          {"HasDietaryPreference", "HasCommunicationPreference", "Prefers"})
 
+    def test_operational_particulars_have_native_fields(self):
+        required = {
+            "Event": {"constraints", "hold_expires_at", "price_amount", "price_currency", "price_basis"},
+            "Trip": {"cost_estimates"},
+            "TransactionReference": {"departure_at", "arrival_at", "logistics"},
+            "TaskReference": {"external_id", "thread_id", "task_details", "communication_state", "channels"},
+            "Content": {"last_synced_at", "coverage", "limitations", "stated_updates"},
+        }
+        for name, fields in required.items():
+            self.assertTrue(fields <= self.catalog["entity_types"][name]["fields"].keys(), name)
+        self.assertIn("different entity", self.catalog["entity_types"]["TaskReference"]["description"])
+
     def test_direction_and_reference_only(self):
         self.assertEqual(self.catalog["edge_types"]["WorksFor"]["pairs"], [["Person", "Organization"]])
         for family in ("task", "decision", "transaction", "interaction"):

@@ -138,12 +138,23 @@ secret injection, seeding, and agent activation as separate reviewable steps.
 
 ## Fair comparison
 
+The first 23-record baseline is preserved in `ea_memory_cookoff_v1` with partial
+extraction. A revised import in `ea_memory_cookoff_v2` passes all 16 targeted
+extraction checks after schema/type-hint fixes. See the
+[repair and readback](SCENARIO-EXTRACTION-FIX-2026-10-01.md) and original
+[seed verification](SCENARIO-SEED-2026-10-01.md). This does not mean the agent
+scenarios have passed. Do not blindly replay either import.
+
 `fixture_episodes.py` converts only
 `../voice-bridge/fixtures/memory-scenarios-v1.json` primary records into native
 `add_memory` inputs. Original facts, structured fields, relationships, stable
 task/thread references, explicit offsets, and the synthetic clock are retained.
 Evaluator documents and answer keys are never ingestion sources. The fixture is
 a snapshot as of its clock, not a reconstructed historical event stream.
+The converter supplies the shared `extraction_rules` plus
+`extraction-guidance.txt` using native `custom_extraction_instructions` on every
+episode. Its manifest records a guidance hash as well as a fixture hash. This
+is an ingestion-caller policy, not a global native-server setting.
 
 ```sh
 python3 -m unittest discover -s services/graphiti-poc/tests -v
