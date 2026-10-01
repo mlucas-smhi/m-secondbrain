@@ -1,8 +1,9 @@
 # Executive-assistant entity and relationship definitions
 
-Status: **implemented and validated offline against the pinned native MCP
-runtime; not deployed to Azure and not yet tested with LLM extraction.** The
-running Azure image still uses the original upstream example models.
+Status: **deployed to the isolated Azure Graphiti app** from commit `2a68f8c` on
+2026-10-01. The native runtime loaded all 21 entity and 31 relationship models.
+See [rollout evidence](ONTOLOGY-ROLLOUT-2026-10-01.md) for live extraction checks and
+remaining gates. No ElevenLabs agent has been connected or switched.
 
 `ontology.json` is the source of truth for `ea-graphiti.v1`. It maps every family
 and predicate in LiteGraph's `entity-foundation.v1.1`; it does not migrate data.
@@ -83,11 +84,16 @@ No graphiti-core, MCP tool handler, ingestion queue, search algorithm or gateway
 payload transformation is changed. Record this as a **custom domain schema on
 native Graphiti**, not an untouched-default comparison.
 
-`extraction_rules` is reusable shared guidance for the future agent/ingestion
-caller, via native `custom_extraction_instructions`; it is not a native global
-config setting. Type/field descriptions are active when this image is deployed.
-This turn does not modify any agent prompt or inject the shared guidance into
-live calls. Never include evaluation answer keys in that guidance.
+`extraction_rules` and `extraction-guidance.txt` are shared guidance for the
+ingestion caller, via native `custom_extraction_instructions`; they are not a
+native global config setting. `extraction.py` builds native `add_memory`
+arguments for the isolated evaluation caller and combines both policies without
+altering the source paragraph. It performs no network calls or graph rewrites.
+The supplement makes meaningful personal traits eligible for domain concepts
+and preserves source qualifiers in edge facts for later attribute extraction.
+It contains no acceptance-case answers. Type/field descriptions are active in
+the deployed image; the supplement applies only to requests that pass it.
+No agent prompt or live-call ingestion is changed by adding these files.
 
 ## Authority and expansion limits
 
@@ -129,8 +135,9 @@ dietary correction, conditional communication, unbooked trip and cross-channel
 engine references. It is an **evaluation plan**, not a passed test suite. Submit
 only each case's episode strings; keep checks/must_not out of ingestion.
 
-Next gates: build/scan a new image; deploy only the isolated Graphiti app after
-draining its queue; use fresh synthetic groups; verify actual nodes/edges,
+Deployment completed; baseline was partial and the first guided comparison
+recovered all expected details. Next gates: test later additions and corrections,
+repeat with varied wording, use fresh synthetic groups; verify actual nodes/edges,
 identity reuse, temporal correction and native provenance for each case; verify
 recall in a new session. Do not reinterpret or silently rebuild the previous
 canary. Keep 11, Eleven.a, 2 and LiteGraph unchanged until an explicit agent

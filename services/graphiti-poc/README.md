@@ -1,8 +1,12 @@
 # Isolated Graphiti cook-off
 
-Status: isolated Azure infrastructure deployed; single-canary entity extraction
-and recall pass after billing recovery. Relationship extraction and the full
-scenario comparison remain unverified. See the
+Status: isolated Azure infrastructure and custom ontology deployed. Single-canary
+entity recall passes; the baseline multi-relationship test was partial, but the
+same paragraph with native extraction guidance recovered diet, hobby and
+anniversary details alongside family and employer links. One guided case passes;
+this is not yet a reliability result. Guidance is passed by the test caller,
+not globally enabled. See the [ontology rollout](ONTOLOGY-ROLLOUT-2026-10-01.md).
+The full scenario comparison remains unverified. See also the
 [rollout receipt](AZURE-ROLLOUT-2026-10-01.md). This directory does not change
 production 11, Eleven.a, LiteGraph, 2, phone routing, or real memories. Live-agent
 activation and the scenario cook-off remain separate steps.
@@ -25,10 +29,10 @@ Validation on 2026-10-01:
   in the rollout receipt. A healthy HTTP endpoint does not prove either works.
 
 The custom executive-assistant [entity/relationship definitions](ONTOLOGY.md)
-are implemented locally, **not deployed**: 21 entity types and 31 relationships,
-with optional structured attributes and explicit source/target mappings.
-Sixteen offline tests and a network-disabled native-loader smoke pass. The Azure
-image digests in the rollout receipt still refer to the original example schema.
+are deployed to the isolated app: 21 entity types and 31 relationships, with
+optional structured attributes and explicit source/target mappings. Eighteen
+offline tests and a network-disabled native-loader smoke pass. Live extraction
+results and the new image digest are recorded in the rollout receipt.
 
 To repeat the opt-in smoke after building both local image tags used by the test:
 

@@ -1,5 +1,9 @@
 # Graphiti isolated Azure rollout — 2026-10-01
 
+Subsequent schema image deployment and partial live relationship results are
+recorded in [the ontology rollout](ONTOLOGY-ROLLOUT-2026-10-01.md). Image digests
+below describe the initial deployment, not the latest schema revision.
+
 ## Outcome
 
 Infrastructure is live. Billing recovered on retry; provider-backed entity
