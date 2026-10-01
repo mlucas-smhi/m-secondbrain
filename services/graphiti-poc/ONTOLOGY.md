@@ -1,0 +1,137 @@
+# Executive-assistant entity and relationship definitions
+
+Status: **implemented and validated offline against the pinned native MCP
+runtime; not deployed to Azure and not yet tested with LLM extraction.** The
+running Azure image still uses the original upstream example models.
+
+`ontology.json` is the source of truth for `ea-graphiti.v1`. It maps every family
+and predicate in LiteGraph's `entity-foundation.v1.1`; it does not migrate data.
+
+## Representation
+
+| Existing family | Graphiti entity types |
+| --- | --- |
+| Person, Animal, Organization, Place | Same names |
+| Project, Activity, Topic, Goal, Routine | Same names |
+| Event | Event; Trip for travel plans |
+| Asset, Service, Content, Endpoint | Same names |
+| Task, Decision, Transaction | TaskReference, DecisionReference, TransactionReference |
+| Interaction | InteractionReference; ThreadReference for persistent cross-channel context |
+| Fact | Native sourced assertions/episode provenance; not a standalone entity type |
+| Explicit extension | Preference, linked to the holder |
+
+This produces 21 entity types, 31 relationships and 53 distinct endpoint-type
+pairs. A role is not a person subtype. The same Person can have any number of
+supported relationships; no one-partner, one-employer or one-child cardinality
+constraint is imposed. In particular, partnership does not establish marriage,
+exclusivity, or parenthood of a partner's children.
+
+### Relationships
+
+- People/family: PartnerOf, ParentOf, SiblingOf, FriendOf, RelatedTo, ReportsTo.
+- Work/location: WorksFor, CollaboratesWith, CollaboratesWithPeopleIn, LivesIn,
+  LocatedAt, Provides.
+- Personal context: CaresFor, Enjoys, HasDietaryPreference,
+  HasCommunicationPreference, Prefers, UsesEndpoint, Owns, FollowsRoutine.
+- Plans/work: ParticipatesIn, HasDestination, PartOf, SupportsGoal,
+  AwaitsDecision, AssignedTo, DependsOn, InThread, ContextFor, MentionedIn.
+- Controlled vocabulary fallback: UnclassifiedRelation for supported connections
+  without a precise definition. Native Graphiti can still emit other predicates;
+  this is not a hard allowlist or a durable classification/review queue.
+
+ParentOf runs parent -> child; ReportsTo runs employee -> manager; WorksFor runs
+person -> organization. PartnerOf/SiblingOf/FriendOf have symmetric meaning:
+one edge can represent the relationship, and recall must consider both endpoint
+directions. The native schema does not enforce inverse-edge deduplication.
+
+### Attributes versus edges
+
+Use an edge when the fact meaningfully connects two identifiable concepts:
+person -> employer, parent -> child, person -> hiking, person -> vegetarian.
+Use attributes for details: employment role, relationship anniversary, explicit
+time zone, event arrival target, reported state and supplied external references.
+Not every number, adjective, street string or passing remark becomes a node.
+
+Important preferences get explicit concepts and edges, while other attributes
+may still be in node properties. Retrieval must use both native node search and
+fact-edge search; neither alone is a complete record. Summaries are helpful but
+not proof that required edges were written.
+
+All custom fields are optional: unknown stays absent. Dates are strings on
+purpose so "July 2027" or "May 12, year unknown" does not become a fabricated
+timestamp. Graphiti's native validity/provenance fields remain native; custom
+attributes do not shadow them. Confirm DST/locale arithmetic separately.
+
+## Native integration, not a middleware writer
+
+The Docker build runs `compile_ontology.py`, which:
+
+1. Validates fields, family coverage and relationship endpoint references.
+2. Generates the native `models/entity_types.py` and `models/edge_types.py`
+   Pydantic registries in the image, replacing upstream's sample domain models.
+3. Preserves upstream server/provider settings and writes `config/ea-config.json`
+   (JSON is valid YAML for the native loader).
+4. Combines every relationship for the same ordered type pair in one map entry.
+   Repeated native entries otherwise overwrite each other.
+
+The explicit `--config` path selects the domain configuration. Merely editing a
+description for a registered built-in name would not work: upstream prefers its
+registered class, including its original description and attributes. The smoke
+test checks the **actual loaded classes**, not only JSON syntax.
+
+No graphiti-core, MCP tool handler, ingestion queue, search algorithm or gateway
+payload transformation is changed. Record this as a **custom domain schema on
+native Graphiti**, not an untouched-default comparison.
+
+`extraction_rules` is reusable shared guidance for the future agent/ingestion
+caller, via native `custom_extraction_instructions`; it is not a native global
+config setting. Type/field descriptions are active when this image is deployed.
+This turn does not modify any agent prompt or inject the shared guidance into
+live calls. Never include evaluation answer keys in that guidance.
+
+## Authority and expansion limits
+
+The ontology describes knowledge, not authorization. Endpoint ownership,
+caller identity, sensitivity checks, tenant boundaries and Turn Engine actions
+need trusted application enforcement. Native MCP's group IDs and extraction
+instructions do not provide those controls.
+
+Operational types carry supplied IDs as references only. Without an ID, a
+mention remains unbound context. An extracted ID is still not independently
+verified. Do not infer reservations, completed payments, approvals or task state
+transitions from intentions. Consult the actual Turn Engine before execution.
+
+Similarly, avoiding secret capture is an instruction here, not a content filter.
+Keep this deployment synthetic-only until authorization/filtering controls exist.
+Graphiti's entity resolution and schema-guided extraction are probabilistic;
+offline model validation does not prove identity resolution, exhaustive capture,
+accurate corrections, or correct relationships from real speech.
+
+## Validation and activation gates
+
+Offline tests:
+
+```sh
+python3 services/graphiti-poc/compile_ontology.py
+python3 -m unittest discover -s services/graphiti-poc/tests -v
+docker run --rm --network none \
+  --mount type=bind,src="$PWD/services/graphiti-poc",dst=/domain,readonly \
+  --entrypoint python graphiti-cookoff-local:3c427640 \
+  /domain/tests/native_ontology_smoke.py
+```
+
+The final command uses the previously built pinned native image and an ephemeral
+source copy. It makes no API or database requests and touches no live memory.
+
+`ontology-acceptance.json` contains eight explicitly synthetic extraction tests:
+multi-role person, later-added child, boss direction, same-name ambiguity,
+dietary correction, conditional communication, unbooked trip and cross-channel
+engine references. It is an **evaluation plan**, not a passed test suite. Submit
+only each case's episode strings; keep checks/must_not out of ingestion.
+
+Next gates: build/scan a new image; deploy only the isolated Graphiti app after
+draining its queue; use fresh synthetic groups; verify actual nodes/edges,
+identity reuse, temporal correction and native provenance for each case; verify
+recall in a new session. Do not reinterpret or silently rebuild the previous
+canary. Keep 11, Eleven.a, 2 and LiteGraph unchanged until an explicit agent
+activation step. Schema changes alone do not backfill existing data.

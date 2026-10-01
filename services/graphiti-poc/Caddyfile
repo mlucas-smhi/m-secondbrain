@@ -1,0 +1,23 @@
+{
+    admin off
+    auto_https off
+}
+
+:8080 {
+    # Liveness only. Database readiness is checked separately with get_status.
+    handle /health {
+        reverse_proxy 127.0.0.1:8000
+    }
+    @mcp {
+        path /mcp /mcp/*
+        header Authorization "Bearer {$MCP_EDGE_TOKEN}"
+    }
+    handle @mcp {
+        # Authentication only; pass native MCP payloads through unchanged.
+        reverse_proxy 127.0.0.1:8000 {
+            header_up -Authorization
+            flush_interval -1
+        }
+    }
+    respond "Unauthorized" 401
+}

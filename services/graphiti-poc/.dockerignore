@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!Caddyfile
+!ontology.json
+!compile_ontology.py

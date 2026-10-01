@@ -1,0 +1,5 @@
+.env
+*.parameters.json
+*.compiled.json
+evidence/
+__pycache__/
