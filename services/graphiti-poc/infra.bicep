@@ -10,7 +10,8 @@ param networkPrefix string = '10.42.0.0/16'
 param appSubnetPrefix string = '10.42.0.0/23'
 param dbSubnetPrefix string = '10.42.4.0/24'
 param dbPrivateIp string = '10.42.4.4'
-var tags = { purpose: 'synthetic-memory-cookoff', production: 'false' }
+param resourceTags object = { purpose: 'synthetic-memory-cookoff', production: 'false' }
+var tags = resourceTags
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: '${prefix}-db-nsg'

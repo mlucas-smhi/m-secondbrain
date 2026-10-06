@@ -5,7 +5,7 @@ set -euo pipefail
 umask 077
 [[ "${DB_PASSWORD:-}" =~ ^[a-f0-9]{64}$ ]] || { echo 'Expected 64-character hex password'; exit 2; }
 [[ "${FALKORDB_IMAGE:-}" =~ ^falkordb/falkordb-server@sha256:[a-f0-9]{64}$ ]] || exit 2
-[[ "${DB_PRIVATE_IP:-}" =~ ^10\.42\.4\.[0-9]+$ ]] || exit 2
+[[ "${DB_PRIVATE_IP:-}" =~ ^10\.(42|43)\.4\.4$ ]] || exit 2
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq docker.io

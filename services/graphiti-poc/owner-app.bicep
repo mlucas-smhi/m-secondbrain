@@ -1,31 +1,25 @@
 targetScope = 'resourceGroup'
-param location string = resourceGroup().location
-param appName string = 'graphiti-cookoff-mcp'
 param environmentId string
-@description('Digest-pinned images built from this directory.')
 param mcpImage string
 param gatewayImage string
+param transportImage string
 param registryServer string
-@description('Managed identity with AcrPull on the build registry.')
 param registryIdentityId string
-param databaseUri string = 'redis://10.42.4.4:6379'
 @secure()
 param databasePassword string
 @secure()
-@minLength(64)
 param mcpEdgeToken string
 @secure()
 param openaiApiKey string
-@description('Explicit selection required; no silent upstream model default.')
+@secure()
+param databaseCaPem string
 param extractionModel string
-param embeddingModel string = 'text-embedding-3-small'
-param memoryGroup string = 'ea_memory_cookoff_v1'
-param resourceTags object = { purpose: 'synthetic-memory-cookoff', production: 'false' }
+param embeddingModel string
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
-  name: appName
-  location: location
-  tags: resourceTags
+  name: 'eleven-owner-graphiti'
+  location: resourceGroup().location
+  tags: { purpose: 'eleven-owner-memory', stage: 'preseed' }
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${registryIdentityId}': {} } }
   properties: {
     managedEnvironmentId: environmentId
@@ -37,6 +31,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'database-password', value: databasePassword }
         { name: 'mcp-edge-token', value: mcpEdgeToken }
         { name: 'openai-api-key', value: openaiApiKey }
+        { name: 'database-ca', value: databaseCaPem }
       ]
     }
     template: {
@@ -47,10 +42,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           image: mcpImage
           resources: { cpu: 1, memory: '2Gi' }
           env: [
-            { name: 'FALKORDB_URI', value: databaseUri }
+            { name: 'FALKORDB_URI', value: 'redis://127.0.0.1:6380' }
             { name: 'FALKORDB_PASSWORD', secretRef: 'database-password' }
-            { name: 'FALKORDB_DATABASE', value: memoryGroup }
-            { name: 'GRAPHITI_GROUP_ID', value: memoryGroup }
+            { name: 'FALKORDB_DATABASE', value: 'eleven_owner_memory_v1' }
+            { name: 'GRAPHITI_GROUP_ID', value: 'eleven_owner_memory_v1' }
             { name: 'MODEL_NAME', value: extractionModel }
             { name: 'EMBEDDER_MODEL', value: embeddingModel }
             { name: 'OPENAI_API_KEY', secretRef: 'openai-api-key' }
@@ -68,8 +63,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
           env: [{ name: 'MCP_EDGE_TOKEN', secretRef: 'mcp-edge-token' }]
         }
+        {
+          name: 'database-tls'
+          image: transportImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          env: [
+            { name: 'DATABASE_TLS_HOST', value: '10.42.4.4' }
+            { name: 'DATABASE_CA_PEM', secretRef: 'database-ca' }
+          ]
+        }
       ]
-      // Native MCP has a process-local queue and session state. Not HA.
       scale: { minReplicas: 1, maxReplicas: 1 }
     }
   }
